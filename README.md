@@ -175,20 +175,26 @@ flowchart LR
     subgraph AWS["AWS - proposed"]
         CloudFront[CloudFront<br/>HTTPS frontend]
         S3[(Private S3 bucket<br/>React build and images)]
-        ECS[ECS Express Mode<br/>NestJS API over HTTPS]
-        RDS[(Private RDS<br/>PostgreSQL)]
+        subgraph VPC["VPC"]
+            ALB[Public ALB<br/>ECS Express Mode HTTPS endpoint]
+            ECS[ECS Fargate task<br/>NestJS API]
+            RDS[(Private RDS<br/>PostgreSQL)]
+        end
     end
 
     Browser -->|Load SPA over HTTPS| CloudFront
     CloudFront -->|Private origin access| S3
-    Browser -->|Call API over HTTPS| ECS
+    Browser -->|Call API over HTTPS| ALB
+    ALB -->|HTTP to task| ECS
     Browser -->|Tokenize card over HTTPS| Provider
-    ECS -->|Private database connection| RDS
+    ECS -->|Restricted PostgreSQL 5432| RDS
     ECS -->|Payment and status over HTTPS| Provider
 ```
 
-CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would provide the public HTTPS API endpoint while managing its underlying load balancer and compute; the API alone would reach RDS through restricted VPC networking. Because the SPA and API use separate HTTPS origins, their eventual CSP and CORS settings must be verified together; the SPA's CSP must also allow card tokenization with the provider. No raw card data should pass through the API.
+CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would create an internet-facing ALB and a Fargate task in the default VPC's public subnets. Public HTTPS terminates at the ALB; its target connection to the NestJS task uses HTTP by default. Restrict task ingress to the ALB and keep RDS non-public, in the same VPC, with PostgreSQL port 5432 open only from the task's security group. The task needs outbound HTTPS access to the payment provider. This public-subnet proposal avoids a NAT gateway; moving the task to private subnets would require revisiting both public ingress and internet egress. Because the SPA and API use separate HTTPS origins, their eventual CSP and CORS settings must be verified together; the SPA's CSP must also allow card tokenization with the provider. No raw card data should pass through the API.
+
+Before deployment, configure an SPA route fallback to `index.html` for browser refreshes, supply database and provider credentials through a secret mechanism rather than the image or frontend build, and verify the actual TLS, headers, and security-group rules. These operational details are intentionally not extra boxes in the runtime diagram.
 
 Deployment automation is **not implemented**: current GitHub Actions only checks pull requests. A later workflow could use short-lived OIDC credentials to upload the React build to S3, push the API image to ECR, and update the ECS service. Before provisioning, verify service availability, regional pricing, and credit eligibility in the actual AWS Free Plan account; the USD 100 credit is not a guarantee that this topology is free. Keep resource sizes small and configure a budget alert. No AWS resources, public URLs, or cloud costs have been verified yet.
 
-AWS references: [private S3 origin with CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [ECS Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-overview.html), and [RDS in a VPC](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html).
+AWS references: [private S3 origin with CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [ECS Express Mode network and target defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html), and [RDS security groups](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-groups.html).
