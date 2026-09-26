@@ -1,0 +1,101 @@
+name: PR validation
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, reopened, edited, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  metadata:
+    name: Validate PR metadata
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check linked issue and type label
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+            const body = pullRequest.body ?? '';
+            const references = [...body.matchAll(/(?:^|\s)(?:Closes|Fixes|Resolves)\s+#([1-9]\d*)\b/gi)];
+            const issueNumbers = [...new Set(references.map((match) => Number(match[1])))];
+            const typeLabels = pullRequest.labels
+              .map((label) => label.name)
+              .filter((name) => name.startsWith('type:'));
+            const errors = [];
+
+            if (issueNumbers.length === 0) {
+              errors.push('PR description must link an issue with Closes/Fixes/Resolves #N.');
+            }
+
+            if (typeLabels.length !== 1) {
+              errors.push(`Expected exactly one type:* label; found ${typeLabels.length}.`);
+            }
+
+            for (const issue_number of issueNumbers) {
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  ...context.repo,
+                  issue_number,
+                });
+
+                if (issue.pull_request) {
+                  errors.push(`#${issue_number} is a pull request, not an issue.`);
+                } else if (!issue.labels.some((label) =>
+                  (typeof label === 'string' ? label : label.name) === 'status:approved')) {
+                  errors.push(`Issue #${issue_number} is missing status:approved.`);
+                }
+              } catch (error) {
+                errors.push(`Cannot verify issue #${issue_number}: ${error.message}`);
+              }
+            }
+
+            if (errors.length > 0) {
+              throw new Error(errors.join('\n'));
+            }
+
+  app-checks:
+    name: App checks (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, backend]
+    steps:
+      - name: Check out PR merge commit
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ matrix.app }}
+      - name: Build
+        run: npm run build
+        working-directory: ${{ matrix.app }}
+      - name: Lint
+        run: npm run lint
+        working-directory: ${{ matrix.app }}
+      - name: Backend unit tests
+        if: matrix.app == 'backend'
+        run: npm test -- --runInBand
+        working-directory: backend
+      - name: Backend end-to-end tests
+        if: matrix.app == 'backend'
+        run: npm run test:e2e -- --runInBand
+        working-directory: backend
