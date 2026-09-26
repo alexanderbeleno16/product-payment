@@ -32,23 +32,24 @@ The database engine, exact ports, and endpoint contracts will be finalized durin
 
 ## 2. Buyer journey (proposed)
 
-The five screens follow the technical brief. Card entry is a modal within the second screen, not an extra screen. The buyer chooses a quantity; the server remains authoritative for price, fees, stock, and payment status.
+The five screens follow the technical brief. Card entry is a modal within the second screen, not an extra screen. Card and delivery fields must be validated. The buyer chooses a quantity; the server remains authoritative for price, fees, stock, and payment status.
 
 ```mermaid
 flowchart LR
     Product["1. Product<br/>Select quantity"] --> Details["2. Card and delivery details<br/>Card modal"]
-    Details --> Summary["3. Summary<br/>Product amount + base fee + delivery fee"]
+    Details --> Summary["3. Summary<br/>Amounts, fees, and backdrop pay button"]
     Summary --> Status["4. Final status<br/>Confirmed, rejected, or pending"]
-    Status -->|Confirmed success| Updated["5. Updated product<br/>Show remaining stock"]
-    Status -->|Rejected: new attempt| Details
+    Status -->|Confirmed: reduced stock| Updated["5. Product page<br/>Show current stock"]
+    Status -->|Rejected: stock unchanged| Updated
     Status -->|Pending: check again| Status
+    Updated -->|New payment attempt| Details
 ```
 
 After a refresh, only non-sensitive checkout progress may be restored. Card details must be entered again. A pending or unknown outcome must not be presented as a rejection or a successful delivery.
 
 ## 3. Payment and fulfillment sequence (proposed)
 
-The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The final-status screen may need to check again while a payment is pending. The mechanism for receiving provider updates (notification or server-side query) remains an implementation decision.
+The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. This sequence illustrates server-side status queries; authenticated provider notifications are another possible integration path, not an implemented feature.
 
 ```mermaid
 sequenceDiagram
@@ -59,6 +60,7 @@ sequenceDiagram
     participant DB as Database
 
     Buyer->>SPA: Choose product, quantity, delivery, and card
+    SPA->>SPA: Validate card format and delivery fields
     SPA->>Provider: Tokenize card in browser
     Provider-->>SPA: Payment token
     SPA->>API: Submit checkout with token and delivery details
@@ -69,9 +71,11 @@ sequenceDiagram
     Provider-->>API: Initial payment state
     API-->>SPA: Transaction reference and current state
 
-    Note over Provider,API: Provider update or server-side status query; verify final status
-    API->>Provider: Verify transaction status when needed
-    Provider-->>API: Authoritative status
+    opt Initial outcome is pending
+        SPA->>API: Check transaction status while pending
+        API->>Provider: Fetch current status server-side
+        Provider-->>API: Authoritative status
+    end
 
     alt Confirmed success and stock available
         API->>DB: Atomically mark success, decrement stock, create one delivery
@@ -82,17 +86,19 @@ sequenceDiagram
         DB-->>API: Remaining stock
         API-->>SPA: Updated product
     else Confirmed rejection
-        API->>DB: Mark rejected; do not change stock or create delivery
+        API->>DB: Mark rejected without changing stock or creating delivery
         API-->>SPA: Rejected status
     else Pending or unknown
-        API-->>SPA: Keep pending; no stock or delivery effect
+        API-->>SPA: Keep pending without stock or delivery effect
     else Confirmed success but stock conflict
-        API->>DB: Record exception for reconciliation; no delivery
-        API-->>SPA: Unresolved status; do not claim fulfillment
+        API->>DB: Record exception for reconciliation, no delivery
+        API-->>SPA: Unresolved status without claiming fulfillment
     end
 ```
 
 External payment and local database writes cannot be one database transaction. Idempotency, concurrent stock updates, and reconciliation after partial failure must be designed and tested before implementation is considered complete. Raw card data must never be stored in the application database or logs.
+
+The brief groups stock and delivery updates under both completed and failed outcomes. This proposal deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
 
 ## 4. Conceptual data model (proposed)
 
@@ -108,6 +114,7 @@ erDiagram
         id id PK
         string name
         string description
+        string image_path
         money unit_price
         int stock
     }
@@ -145,3 +152,7 @@ erDiagram
 ```
 
 The authoritative price and stock live on the server. `money` and `id` denote concepts; their storage types, currency precision, constraints, and migration strategy remain to be selected. Failed or unresolved payments have no delivery record and do not decrement stock.
+
+## Image handling (proposed)
+
+The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by an optional `image_path` and served as a static frontend asset, without an image-upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
