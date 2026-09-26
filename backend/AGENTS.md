@@ -4,8 +4,8 @@ These instructions apply to `backend/` and its descendants. Inherit the reposito
 
 ## Current baseline
 
-- The application is a NestJS + TypeScript scaffold using CommonJS and Jest. TypeORM is the chosen ORM direction for guidance but is not installed or integrated; do not assume a database engine, payment integration, or deployment adapter has been selected or implemented.
-- Keep the scaffold-only phase intact until application behavior is explicitly authorized. Verify installed Nest versions before adopting version-sensitive APIs.
+- The application uses NestJS + TypeScript with CommonJS output and Jest. PostgreSQL and TypeORM back the read-only product endpoint through an application-owned port; payment integration and deployment adapters are not implemented.
+- Keep the product-read boundary intact and do not present planned checkout behavior as implemented. Verify installed Nest and TypeORM versions before adopting version-sensitive APIs.
 
 ## Working rules
 
