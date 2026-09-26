@@ -1,0 +1,111 @@
+import { createHash, randomUUID } from 'node:crypto';
+import type {
+  CheckoutInput,
+  CheckoutResult,
+  CheckoutTransaction,
+} from './checkout';
+import { priceCheckout } from './checkout-pricing';
+import { IdempotencyKeyTaken, type CheckoutStore } from './checkout-store.port';
+import type { ProductReader } from './product-reader.port';
+
+function normalize(input: CheckoutInput): CheckoutInput {
+  return {
+    idempotencyKey: input.idempotencyKey.trim().toLowerCase(),
+    productId: input.productId.trim().toLowerCase(),
+    quantity: input.quantity,
+    customerEmail: input.customerEmail.trim().toLowerCase(),
+    delivery: {
+      recipientName: input.delivery.recipientName.trim(),
+      addressLine: input.delivery.addressLine.trim(),
+      city: input.delivery.city.trim(),
+    },
+  };
+}
+
+function isValid(input: CheckoutInput): boolean {
+  return (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      input.idempotencyKey,
+    ) &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      input.productId,
+    ) &&
+    Number.isSafeInteger(input.quantity) &&
+    input.quantity > 0 &&
+    input.customerEmail.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customerEmail) &&
+    input.delivery.recipientName.length > 0 &&
+    input.delivery.recipientName.length <= 120 &&
+    input.delivery.addressLine.length > 0 &&
+    input.delivery.addressLine.length <= 240 &&
+    input.delivery.city.length > 0 &&
+    input.delivery.city.length <= 120
+  );
+}
+
+export class StartCheckout {
+  constructor(
+    private readonly products: ProductReader,
+    private readonly store: CheckoutStore,
+  ) {}
+
+  async execute(
+    raw: CheckoutInput,
+  ): Promise<CheckoutResult<CheckoutTransaction>> {
+    const input = normalize(raw);
+    if (!isValid(input)) return { ok: false, reason: 'INVALID_INPUT' };
+
+    // The fingerprint intentionally omits transient payment credentials, current price,
+    // and the key itself. A replay returns the original amount even if price changes.
+    const requestFingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          input.productId,
+          input.quantity,
+          input.customerEmail,
+          input.delivery.recipientName,
+          input.delivery.addressLine,
+          input.delivery.city,
+        ]),
+      )
+      .digest('hex');
+    const existing = await this.store.findByIdempotencyKey(
+      input.idempotencyKey,
+    );
+    if (existing) return this.replay(existing, requestFingerprint);
+
+    const product = await this.products.findById(input.productId);
+    if (!product) return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
+    const quote = priceCheckout(product, input.quantity);
+    if (!quote.ok) return quote;
+
+    try {
+      const checkout = await this.store.createPending({
+        id: randomUUID(),
+        reference: `txn_${randomUUID()}`,
+        input,
+        quote: quote.value,
+        requestFingerprint,
+      });
+      return { ok: true, value: checkout };
+    } catch (error) {
+      // A concurrent first request may have won the unique-key race. Let the
+      // persistence adapter signal only this specific constraint violation.
+      if (!(error instanceof IdempotencyKeyTaken)) throw error;
+      const winner = await this.store.findByIdempotencyKey(
+        input.idempotencyKey,
+      );
+      if (!winner) throw error;
+      return this.replay(winner, requestFingerprint);
+    }
+  }
+
+  private replay(
+    existing: CheckoutTransaction,
+    fingerprint: string,
+  ): CheckoutResult<CheckoutTransaction> {
+    return existing.requestFingerprint === fingerprint
+      ? { ok: true, value: existing }
+      : { ok: false, reason: 'IDEMPOTENCY_CONFLICT' };
+  }
+}

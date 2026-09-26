@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend currently has PostgreSQL/TypeORM product persistence, a versioned migration, a repeatable dummy-product seed, and a read-only `GET /products/:id` route. See the [backend setup and API contract](backend/README.md) to run and verify it. Checkout, payment integration, stock updates, delivery, and deployment are **not implemented** yet. The diagrams below describe the intended complete solution, not the current runtime behavior.
+This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend has PostgreSQL/TypeORM product persistence, a repeatable dummy-product seed, a read-only `GET /products/:id` route, and internal server-priced/idempotent PENDING checkout logic with versioned persistence. See the [backend setup and API contract](backend/README.md) to run and verify it. Checkout HTTP, payment integration, stock updates, delivery, and deployment are **not implemented** yet. The diagrams below describe the intended complete solution, not the current runtime behavior.
 
 ## 1. Application architecture (proposed)
 
