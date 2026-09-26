@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository currently contains a React/Vite frontend scaffold and a NestJS backend scaffold. Checkout, persistence, payment integration, and deployment are **not implemented yet**. The diagrams below describe the intended solution, not the current runtime behavior.
+This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend currently has PostgreSQL/TypeORM product persistence, a versioned migration, a repeatable dummy-product seed, and a read-only `GET /products/:id` route. See the [backend setup and API contract](backend/README.md) to run and verify it. Checkout, payment integration, stock updates, delivery, and deployment are **not implemented** yet. The diagrams below describe the intended complete solution, not the current runtime behavior.
 
 ## 1. Application architecture (proposed)
 
@@ -31,7 +31,7 @@ flowchart LR
     PaymentAdapter -. implements .-> PaymentPort
 ```
 
-PostgreSQL and TypeORM are the selected backend direction, not installed behavior. Exact ports and endpoint contracts will be finalized during implementation. The core must not import NestJS, TypeORM, or payment-provider types. Event authentication and HTTP mapping belong to inbound adapters; payment and persistence calls go through core-owned outbound ports.
+PostgreSQL and TypeORM now implement the product-read persistence boundary. The implemented `ProductReader` port, `GetProduct` use case, and `GET /products/:id` contract are documented in the [backend README](backend/README.md). Other ports and endpoint contracts will be finalized as checkout is implemented. The core must not import NestJS, TypeORM, or payment-provider types. Event authentication and HTTP mapping belong to inbound adapters; payment and persistence calls go through core-owned outbound ports.
 
 ## 2. Buyer journey (proposed)
 
@@ -126,7 +126,7 @@ External payment and local database writes cannot be one transaction. The applic
 
 The brief groups stock and delivery updates under both completed and failed outcomes. This proposal deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
 
-The proposed HTTP surface includes product/stock reads, a server-priced checkout quote, checkout submission, a read-only transaction-status lookup, and a signed event receiver. Customer and delivery data are managed through the checkout lifecycle, not exposed as unauthenticated public CRUD endpoints. Exact paths, validation, access rules for status lookup, and public Swagger URL remain to be defined and verified during implementation.
+The only product/checkout-related HTTP route implemented now is `GET /products/:id` (the generated scaffold's `GET /` remains). The proposed remaining HTTP surface includes a server-priced checkout quote, checkout submission, a read-only transaction-status lookup, and a signed event receiver. Customer and delivery data would be managed through the checkout lifecycle, not exposed as unauthenticated public CRUD endpoints. Their exact paths, validation, access rules, and the final public API documentation link remain to be defined and verified during implementation.
 
 Planned verification includes duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local persistence failure after provider approval. Unit tests cover use-case policy; PostgreSQL integration tests must prove atomicity and uniqueness. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
 
