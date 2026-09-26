@@ -49,7 +49,7 @@ After a refresh, only non-sensitive checkout progress may be restored. Card deta
 
 ## 3. Payment and fulfillment sequence (proposed)
 
-The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. This sequence illustrates server-side status queries; authenticated provider notifications are another possible integration path, not an implemented feature.
+The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. This sequence shows the pending path with bounded browser polling of **our API**, never the provider. If payment creation returns a terminal outcome, the API applies the same finalization rules before responding. Authenticated provider notifications are another possible integration path, not an implemented feature.
 
 ```mermaid
 sequenceDiagram
@@ -66,37 +66,43 @@ sequenceDiagram
     SPA->>API: Submit checkout with token and delivery details
     API->>DB: Load canonical product and stock
     API->>API: Validate quantity and calculate amount and fees
+    API->>API: Generate unique transaction reference
     API->>DB: Save customer and PENDING transaction with reference
     API->>Provider: Request sandbox payment
-    Provider-->>API: Initial payment state
-    API-->>SPA: Transaction reference and current state
+    Provider-->>API: Initial PENDING state and provider ID
+    API->>DB: Save provider ID on PENDING transaction
+    API-->>SPA: Transaction reference and PENDING state
 
-    opt Initial outcome is pending
-        SPA->>API: Check transaction status while pending
+    loop While payment remains PENDING
+        SPA->>API: GET transaction status
         API->>Provider: Fetch current status server-side
         Provider-->>API: Authoritative status
+        alt Provider confirms APPROVED
+            API->>DB: Finalize once in DB transaction: conditional stock decrement, mark APPROVED, create delivery
+            DB-->>API: Fulfilled or stock conflict
+            alt Fulfilled
+                API-->>SPA: Payment APPROVED and delivery created
+            else Stock conflict
+                API->>DB: Record APPROVED payment and fulfillment needing reconciliation
+                API-->>SPA: Payment APPROVED, fulfillment unresolved
+            end
+        else Provider confirms failure
+            API->>DB: Mark failed once without stock decrement or delivery
+            API-->>SPA: Failed payment
+        else Still PENDING or status unknown
+            API-->>SPA: Keep PENDING without stock or delivery effect
+        end
     end
 
-    alt Confirmed success and stock available
-        API->>DB: Atomically mark success, decrement stock, create one delivery
-        DB-->>API: Commit result
-        API-->>SPA: Confirmed status
+    opt Terminal result received
         SPA->>API: Request updated product
         API->>DB: Load current product
-        DB-->>API: Remaining stock
+        DB-->>API: Current stock
         API-->>SPA: Updated product
-    else Confirmed rejection
-        API->>DB: Mark rejected without changing stock or creating delivery
-        API-->>SPA: Rejected status
-    else Pending or unknown
-        API-->>SPA: Keep pending without stock or delivery effect
-    else Confirmed success but stock conflict
-        API->>DB: Record exception for reconciliation, no delivery
-        API-->>SPA: Unresolved status without claiming fulfillment
     end
 ```
 
-External payment and local database writes cannot be one database transaction. Idempotency, concurrent stock updates, and reconciliation after partial failure must be designed and tested before implementation is considered complete. Raw card data must never be stored in the application database or logs.
+External payment and local database writes cannot be one database transaction. A unique transaction reference is created before the provider request, but uniqueness alone does not guarantee safe provider retries. Finalization must be idempotent under repeated status checks, and concurrent stock updates and partial failures need tests and reconciliation. Payment status and fulfillment status are distinct: an approved charge with unavailable stock remains approved but must not claim a delivery. Raw card data must never be stored in the application database or logs.
 
 The brief groups stock and delivery updates under both completed and failed outcomes. This proposal deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
 
