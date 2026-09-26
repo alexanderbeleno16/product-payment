@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository currently contains a React/Vite frontend scaffold and a NestJS backend scaffold. Checkout, persistence, payment integration, and deployment are **not implemented yet**. The four diagrams below describe the intended solution, not the current runtime behavior.
+This repository currently contains a React/Vite frontend scaffold and a NestJS backend scaffold. Checkout, persistence, payment integration, and deployment are **not implemented yet**. The diagrams below describe the intended solution, not the current runtime behavior.
 
 ## 1. Application architecture (proposed)
 
@@ -162,3 +162,33 @@ The authoritative price and stock live on the server. `money` and `id` denote co
 ## Image handling (proposed)
 
 The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by an optional `image_path` and served as a static frontend asset, without an image-upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
+
+## 5. AWS deployment topology (proposed)
+
+This is a deployment proposal, **not an existing AWS environment**. The diagram shows only runtime traffic. The React build is static, so it does not need a production frontend container. The only application container runs NestJS; PostgreSQL is proposed as a managed, non-public database rather than a production database container.
+
+```mermaid
+flowchart LR
+    Browser[Buyer browser]
+    Provider[Empresa innombrable sandbox]
+
+    subgraph AWS["AWS - proposed"]
+        CloudFront[CloudFront<br/>HTTPS frontend]
+        S3[(Private S3 bucket<br/>React build and images)]
+        ECS[ECS Express Mode<br/>NestJS API over HTTPS]
+        RDS[(Private RDS<br/>PostgreSQL)]
+    end
+
+    Browser -->|Load SPA over HTTPS| CloudFront
+    CloudFront -->|Private origin access| S3
+    Browser -->|Call API over HTTPS| ECS
+    Browser -->|Tokenize card over HTTPS| Provider
+    ECS -->|Private database connection| RDS
+    ECS -->|Payment and status over HTTPS| Provider
+```
+
+CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would provide the public HTTPS API endpoint while managing its underlying load balancer and compute; the API alone would reach RDS through restricted VPC networking. Because the SPA and API use separate HTTPS origins, their eventual CSP and CORS settings must be verified together; the SPA's CSP must also allow card tokenization with the provider. No raw card data should pass through the API.
+
+Deployment automation is **not implemented**: current GitHub Actions only checks pull requests. A later workflow could use short-lived OIDC credentials to upload the React build to S3, push the API image to ECR, and update the ECS service. Before provisioning, verify service availability, regional pricing, and credit eligibility in the actual AWS Free Plan account; the USD 100 credit is not a guarantee that this topology is free. Keep resource sizes small and configure a budget alert. No AWS resources, public URLs, or cloud costs have been verified yet.
+
+AWS references: [private S3 origin with CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [ECS Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-overview.html), and [RDS in a VPC](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html).
