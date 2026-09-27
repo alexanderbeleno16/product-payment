@@ -9,38 +9,54 @@ import { IdempotencyKeyTaken, type CheckoutStore } from './checkout-store.port';
 import type { ProductReader } from './product-reader.port';
 import { isUuidV4 } from './uuid-v4';
 
-function normalize(input: CheckoutInput): CheckoutInput {
-  return {
-    idempotencyKey: input.idempotencyKey.trim().toLowerCase(),
-    productId: input.productId.trim().toLowerCase(),
-    quantity: input.quantity,
-    installments: input.installments,
-    customerEmail: input.customerEmail.trim().toLowerCase(),
-    delivery: {
-      recipientName: input.delivery.recipientName.trim(),
-      addressLine: input.delivery.addressLine.trim(),
-      city: input.delivery.city.trim(),
-    },
-  };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isValid(input: CheckoutInput): boolean {
-  return (
-    isUuidV4(input.idempotencyKey) &&
-    isUuidV4(input.productId) &&
-    Number.isSafeInteger(input.quantity) &&
-    input.quantity > 0 &&
-    Number.isSafeInteger(input.installments) &&
-    input.installments > 0 &&
-    input.customerEmail.length <= 254 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customerEmail) &&
-    input.delivery.recipientName.length > 0 &&
-    input.delivery.recipientName.length <= 120 &&
-    input.delivery.addressLine.length > 0 &&
-    input.delivery.addressLine.length <= 240 &&
-    input.delivery.city.length > 0 &&
-    input.delivery.city.length <= 120
-  );
+function canonicalizeCheckoutInput(raw: unknown): CheckoutInput | null {
+  if (!isRecord(raw) || !isRecord(raw.delivery)) return null;
+  if (
+    typeof raw.idempotencyKey !== 'string' ||
+    typeof raw.productId !== 'string' ||
+    typeof raw.customerEmail !== 'string' ||
+    typeof raw.delivery.recipientName !== 'string' ||
+    typeof raw.delivery.addressLine !== 'string' ||
+    typeof raw.delivery.city !== 'string' ||
+    typeof raw.quantity !== 'number' ||
+    typeof raw.installments !== 'number' ||
+    !Number.isSafeInteger(raw.quantity) ||
+    !Number.isSafeInteger(raw.installments)
+  )
+    return null;
+
+  const input: CheckoutInput = {
+    idempotencyKey: raw.idempotencyKey.trim().toLowerCase(),
+    productId: raw.productId.trim().toLowerCase(),
+    quantity: raw.quantity,
+    installments: raw.installments,
+    customerEmail: raw.customerEmail.trim().toLowerCase(),
+    delivery: {
+      recipientName: raw.delivery.recipientName.trim(),
+      addressLine: raw.delivery.addressLine.trim(),
+      city: raw.delivery.city.trim(),
+    },
+  };
+  if (
+    !isUuidV4(input.idempotencyKey) ||
+    !isUuidV4(input.productId) ||
+    input.quantity < 1 ||
+    input.installments < 1 ||
+    input.customerEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customerEmail) ||
+    input.delivery.recipientName.length < 1 ||
+    input.delivery.recipientName.length > 120 ||
+    input.delivery.addressLine.length < 1 ||
+    input.delivery.addressLine.length > 240 ||
+    input.delivery.city.length < 1 ||
+    input.delivery.city.length > 120
+  )
+    return null;
+  return input;
 }
 
 export class StartCheckout {
@@ -52,8 +68,8 @@ export class StartCheckout {
   async execute(
     raw: CheckoutInput,
   ): Promise<CheckoutResult<CheckoutTransaction>> {
-    const input = normalize(raw);
-    if (!isValid(input)) return { ok: false, reason: 'INVALID_INPUT' };
+    const input = canonicalizeCheckoutInput(raw);
+    if (!input) return { ok: false, reason: 'INVALID_INPUT' };
 
     // The fingerprint intentionally omits transient payment credentials, current price,
     // and the key itself. A replay returns the original amount even if price changes.
