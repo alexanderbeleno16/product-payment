@@ -115,6 +115,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
         cardToken,
         cardBrand: brand,
         cardLastFour: values.number.slice(-4),
+        acceptsEndUserPolicy: true,
+        acceptsPersonalDataAuthorization: true,
         customerEmail: values.customerEmail.trim().toLowerCase(),
         delivery: { recipientName: values.recipientName.trim(), addressLine: values.addressLine.trim(), city: values.city.trim() },
         consentTokens: { endUserPolicy: terms.endUserPolicy.token,

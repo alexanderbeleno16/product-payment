@@ -136,6 +136,8 @@ test('submits only after valid delivery and both explicit consents', async () =>
     cardToken: 'opaque-test-token',
     cardBrand: 'visa',
     cardLastFour: card.slice(-4),
+    acceptsEndUserPolicy: true,
+    acceptsPersonalDataAuthorization: true,
     consentTokens: { endUserPolicy: consents.endUserPolicy.token, personalDataAuthorization: consents.personalDataAuthorization.token },
   })))
   expect(tokenizationMock).toHaveBeenCalledWith(expect.objectContaining({ number: card }), consents.publicKey, expect.any(AbortSignal))
