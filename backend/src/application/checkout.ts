@@ -1,3 +1,9 @@
+import type {
+  CheckoutQuote,
+  PaymentStatus,
+  PricingFailure,
+} from '../domain/checkout';
+
 export interface DeliveryDetails {
   readonly recipientName: string;
   readonly addressLine: string;
@@ -12,20 +18,6 @@ export interface CheckoutInput {
   readonly delivery: DeliveryDetails;
 }
 
-export interface CheckoutQuote {
-  readonly productId: string;
-  readonly quantity: number;
-  readonly currency: 'COP';
-  readonly unitPriceCents: number;
-  readonly productAmountCents: number;
-  readonly baseFeeCents: number;
-  readonly deliveryFeeCents: number;
-  readonly totalCents: number;
-}
-
-export type PaymentStatus =
-  'PENDING' | 'SUBMISSION_UNKNOWN' | 'APPROVED' | 'DECLINED' | 'ERROR';
-
 export interface CheckoutTransaction extends CheckoutQuote {
   readonly id: string;
   readonly reference: string;
@@ -39,11 +31,7 @@ export interface CheckoutTransaction extends CheckoutQuote {
 }
 
 export type CheckoutFailure =
-  | 'INVALID_INPUT'
-  | 'PRODUCT_NOT_FOUND'
-  | 'INSUFFICIENT_STOCK'
-  | 'UNSUPPORTED_CURRENCY'
-  | 'IDEMPOTENCY_CONFLICT';
+  PricingFailure | 'PRODUCT_NOT_FOUND' | 'IDEMPOTENCY_CONFLICT';
 
 export type CheckoutResult<T> =
   | { readonly ok: true; readonly value: T }

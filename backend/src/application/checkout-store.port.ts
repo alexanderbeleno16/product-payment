@@ -1,8 +1,5 @@
-import type {
-  CheckoutInput,
-  CheckoutQuote,
-  CheckoutTransaction,
-} from './checkout';
+import type { CheckoutInput, CheckoutTransaction } from './checkout';
+import type { CheckoutQuote } from '../domain/checkout';
 
 export interface NewPendingCheckout {
   readonly id: string;

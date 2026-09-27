@@ -3,9 +3,9 @@ import type { CheckoutStore } from './application/checkout-store.port';
 import { QuoteCheckout } from './application/quote-checkout';
 import { StartCheckout } from './application/start-checkout';
 import type { ProductReader } from './application/product-reader.port';
-import { DatabaseConnection } from './infrastructure/persistence/database-connection';
-import { DatabaseModule } from './infrastructure/persistence/database.module';
-import { TypeOrmCheckoutStore } from './infrastructure/persistence/typeorm-checkout.store';
+import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
+import { DatabaseModule } from './adapters/outbound/persistence/database.module';
+import { TypeOrmCheckoutStore } from './adapters/outbound/persistence/typeorm-checkout.store';
 import { PRODUCT_READER, ProductsModule } from './products.module';
 
 export const CHECKOUT_STORE = Symbol('CHECKOUT_STORE');
