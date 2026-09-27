@@ -4,7 +4,7 @@ import { PaymentEventVerifier } from './payment-event.verifier';
 
 const secret = 'test_events_fixture_only';
 const verifier = new PaymentEventVerifier(secret);
-const transaction = {
+const baseTransaction = {
   id: 'provider-transaction-1',
   status: 'APPROVED',
   amount_in_cents: 2_700_000,
@@ -16,7 +16,11 @@ type FixtureEvent = PaymentEventDto & {
   data: { transaction: Record<string, unknown> };
 };
 
-function event(properties: string[]): FixtureEvent {
+function event(
+  properties: string[],
+  overrides: Partial<typeof baseTransaction> = {},
+): FixtureEvent {
+  const transaction = { ...baseTransaction, ...overrides };
   const values = properties.map((property) => {
     const key = property.slice(
       'transaction.'.length,
@@ -49,7 +53,7 @@ describe('PaymentEventVerifier', () => {
       verifier.verify(signed, signed.signature.checksum.toUpperCase()),
     ).toEqual({
       ok: true,
-      providerTransactionId: transaction.id,
+      providerTransactionId: baseTransaction.id,
       signedTerminalStatus: 'APPROVED',
     });
   });
@@ -57,7 +61,7 @@ describe('PaymentEventVerifier', () => {
   it('does not treat an unsigned status as a retry hint', () => {
     expect(verifier.verify(event(['transaction.id']))).toEqual({
       ok: true,
-      providerTransactionId: transaction.id,
+      providerTransactionId: baseTransaction.id,
       signedTerminalStatus: null,
     });
   });
@@ -88,17 +92,25 @@ describe('PaymentEventVerifier', () => {
   });
 
   it('rejects malformed IDs and unsupported statuses despite a valid checksum', () => {
-    const signed = event(['transaction.id']);
-    signed.data.transaction.status = 'UNKNOWN';
-    expect(verifier.verify(signed)).toEqual({ ok: false });
-    signed.data.transaction.status = 'APPROVED';
-    signed.data.transaction.id = '../other';
-    expect(verifier.verify(signed)).toEqual({ ok: false });
-    const wrongCurrency = event(['transaction.id']);
-    wrongCurrency.data.transaction.currency = 'USD';
-    expect(verifier.verify(wrongCurrency)).toEqual({ ok: false });
-    const wrongAmount = event(['transaction.id']);
-    wrongAmount.data.transaction.amount_in_cents = '2700000';
-    expect(verifier.verify(wrongAmount)).toEqual({ ok: false });
+    expect(
+      verifier.verify(
+        event(['transaction.id', 'transaction.status'], { status: 'UNKNOWN' }),
+      ),
+    ).toEqual({ ok: false });
+    expect(
+      verifier.verify(event(['transaction.id'], { id: '../other' })),
+    ).toEqual({ ok: false });
+    expect(
+      verifier.verify(
+        event(['transaction.id', 'transaction.currency'], { currency: 'USD' }),
+      ),
+    ).toEqual({ ok: false });
+    expect(
+      verifier.verify(
+        event(['transaction.id', 'transaction.amount_in_cents'], {
+          amount_in_cents: -1,
+        }),
+      ),
+    ).toEqual({ ok: false });
   });
 });

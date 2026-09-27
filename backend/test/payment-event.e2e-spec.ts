@@ -187,6 +187,11 @@ describe('Signed payment event HTTP contract (e2e)', () => {
       .post('/payment/events')
       .send({ ...valid, extra: 'not allowed' })
       .expect(400);
+    const { signature: _signature, ...withoutSignature } = valid;
+    await request(app.getHttpServer())
+      .post('/payment/events')
+      .send(withoutSignature)
+      .expect(400);
     await request(app.getHttpServer())
       .post('/payment/events')
       .send(signedEvent(['transaction.status']))
