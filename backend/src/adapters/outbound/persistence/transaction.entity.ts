@@ -1,5 +1,5 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
-import type { PaymentStatus } from '../../application/checkout';
+import type { PaymentStatus } from '../../../domain/checkout';
 
 @Entity({ name: 'transactions' })
 export class TransactionEntity {

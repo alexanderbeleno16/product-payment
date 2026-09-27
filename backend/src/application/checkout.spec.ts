@@ -2,8 +2,9 @@ import type { CheckoutInput, CheckoutTransaction } from './checkout';
 import {
   BASE_FEE_CENTS,
   DELIVERY_FEE_CENTS,
+  MAX_CHECKOUT_TOTAL_CENTS,
   priceCheckout,
-} from './checkout-pricing';
+} from '../domain/checkout-pricing';
 import {
   IdempotencyKeyTaken,
   type CheckoutStore,
@@ -85,7 +86,7 @@ describe('checkout application', () => {
     });
   });
 
-  it('rejects invalid quantity, insufficient stock, unsupported currency, and integer overflow', () => {
+  it('rejects invalid quantity, insufficient stock, unsupported currency, and amounts above the demo cap', () => {
     expect(priceCheckout(product, 0)).toMatchObject({
       ok: false,
       reason: 'INVALID_INPUT',
@@ -99,8 +100,34 @@ describe('checkout application', () => {
       reason: 'UNSUPPORTED_CURRENCY',
     });
     expect(
-      priceCheckout({ ...product, priceCents: 2_000_000_000 }, 2),
+      priceCheckout(
+        {
+          ...product,
+          priceCents:
+            MAX_CHECKOUT_TOTAL_CENTS - BASE_FEE_CENTS - DELIVERY_FEE_CENTS,
+        },
+        1,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      priceCheckout(
+        {
+          ...product,
+          priceCents:
+            MAX_CHECKOUT_TOTAL_CENTS - BASE_FEE_CENTS - DELIVERY_FEE_CENTS + 1,
+        },
+        1,
+      ),
     ).toMatchObject({ ok: false, reason: 'INVALID_INPUT' });
+  });
+
+  it('rejects malformed product IDs before invoking the product reader', async () => {
+    const quote = new QuoteCheckout(reader);
+    await expect(quote.execute('not-a-uuid', 1)).resolves.toEqual({
+      ok: false,
+      reason: 'INVALID_INPUT',
+    });
+    expect(findById).not.toHaveBeenCalled();
   });
 
   it('persists one pending transaction with a canonical business fingerprint', async () => {

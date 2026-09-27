@@ -1,5 +1,5 @@
 import { GetProduct } from './get-product';
-import type { Product } from './product';
+import type { Product } from '../domain/product';
 import type { ProductReader } from './product-reader.port';
 
 const product: Product = {

@@ -7,8 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
-    "db:migrate": "node dist/infrastructure/persistence/migrate.js",
-    "db:seed": "node dist/infrastructure/persistence/seed.js",
+    "db:migrate": "node dist/adapters/outbound/persistence/migrate.js",
+    "db:seed": "node dist/adapters/outbound/persistence/seed.js",
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

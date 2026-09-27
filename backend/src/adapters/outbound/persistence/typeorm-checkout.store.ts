@@ -3,9 +3,9 @@ import type { QueryFailedError } from 'typeorm';
 import type {
   CheckoutStore,
   NewPendingCheckout,
-} from '../../application/checkout-store.port';
-import { IdempotencyKeyTaken } from '../../application/checkout-store.port';
-import type { CheckoutTransaction } from '../../application/checkout';
+} from '../../../application/checkout-store.port';
+import { IdempotencyKeyTaken } from '../../../application/checkout-store.port';
+import type { CheckoutTransaction } from '../../../application/checkout';
 import { CustomerEntity } from './customer.entity';
 import { DatabaseConnection } from './database-connection';
 import { TransactionEntity } from './transaction.entity';

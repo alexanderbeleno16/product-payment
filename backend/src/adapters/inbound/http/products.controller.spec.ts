@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
-import { GetProduct } from './application/get-product';
-import type { Product } from './application/product';
+import { GetProduct } from '../../../application/get-product';
+import type { Product } from '../../../domain/product';
 import { ProductsController } from './products.controller';
 
 const product: Product = {
