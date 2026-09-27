@@ -6,9 +6,9 @@ import type {
   VerifiedPaymentSnapshot,
 } from '../../../application/finalize-verified-payment';
 import {
-  isFinalPaymentStatus,
-  paymentTransition,
-} from '../../../domain/checkout';
+  decideFinalization,
+  fulfillmentAfterFinalization,
+} from '../../../application/finalization-policy';
 import { DatabaseConnection } from './database-connection';
 import { DeliveryEntity } from './delivery.entity';
 import { ProductEntity } from './product.entity';
@@ -27,45 +27,24 @@ export class TypeOrmFinalizationStore implements FinalizationStore {
           where: { reference: snapshot.reference },
           lock: { mode: 'pessimistic_write' },
         });
-        if (!transaction) return { ok: false, reason: 'NOT_FOUND' };
-
-        if (
-          transaction.totalCents !== snapshot.amountCents ||
-          transaction.currency !== snapshot.currency ||
-          (transaction.providerTransactionId !== null &&
-            transaction.providerTransactionId !==
-              snapshot.providerTransactionId)
-        ) {
-          return { ok: false, reason: 'MISMATCH' };
-        }
-        if (transaction.submissionStartedAt === null) {
-          return { ok: false, reason: 'NOT_SUBMITTED' };
-        }
-
-        const transition = paymentTransition(
-          transaction.status,
-          snapshot.status,
+        const decision = decideFinalization(
+          transaction && {
+            reference: transaction.reference,
+            totalCents: transaction.totalCents,
+            currency: transaction.currency,
+            providerTransactionId: transaction.providerTransactionId,
+            submissionStarted: transaction.submissionStartedAt !== null,
+            paymentStatus: transaction.status,
+            fulfillmentStatus: transaction.fulfillmentStatus,
+          },
+          snapshot,
         );
-        if (transition === 'CONFLICT') {
-          return { ok: false, reason: 'TERMINAL_CONFLICT' };
-        }
-        if (transition === 'REPLAY' || transition === 'STALE') {
-          if (!isFinalPaymentStatus(transaction.status)) {
-            throw new Error('Terminal payment state invariant violated');
-          }
-          return {
-            ok: true,
-            value: {
-              reference: transaction.reference,
-              paymentStatus: transaction.status,
-              fulfillmentStatus: transaction.fulfillmentStatus,
-              applied: false,
-            },
-          };
-        }
+        if (decision.kind === 'RETURN') return decision.result;
+        if (!transaction)
+          throw new Error('Finalization state invariant violated');
 
-        let fulfillmentStatus = transaction.fulfillmentStatus;
-        if (snapshot.status === 'APPROVED') {
+        let stockReserved = false;
+        if (decision.needsStock) {
           const stock = await manager
             .createQueryBuilder()
             .update(ProductEntity)
@@ -84,11 +63,14 @@ export class TypeOrmFinalizationStore implements FinalizationStore {
               quantity: transaction.quantity,
               createdAt: new Date(),
             });
-            fulfillmentStatus = 'CREATED';
-          } else {
-            fulfillmentStatus = 'STOCK_UNAVAILABLE';
+            stockReserved = true;
           }
         }
+        const fulfillmentStatus = fulfillmentAfterFinalization(
+          transaction.fulfillmentStatus,
+          decision.needsStock,
+          stockReserved,
+        );
 
         await manager.update(TransactionEntity, transaction.id, {
           providerTransactionId: snapshot.providerTransactionId,
