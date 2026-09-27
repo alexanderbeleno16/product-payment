@@ -10,6 +10,7 @@ import { createDataSource } from '../src/adapters/outbound/persistence/data-sour
 import { DatabaseConnection } from '../src/adapters/outbound/persistence/database-connection';
 import { DeliveryEntity } from '../src/adapters/outbound/persistence/delivery.entity';
 import { ProductEntity } from '../src/adapters/outbound/persistence/product.entity';
+import { CustomerEntity } from '../src/adapters/outbound/persistence/customer.entity';
 import { TransactionEntity } from '../src/adapters/outbound/persistence/transaction.entity';
 import { TypeOrmCheckoutStore } from '../src/adapters/outbound/persistence/typeorm-checkout.store';
 import { TypeOrmProductReader } from '../src/adapters/outbound/persistence/typeorm-product.reader';
@@ -21,6 +22,7 @@ import {
   PAYMENT_GATEWAY,
   PAYMENT_STATUS_READER,
 } from '../src/checkout.tokens';
+import { PRODUCT_READER } from '../src/products.module';
 
 const testDatabaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
 const productId = '4b9e9c38-3c42-44c6-9cf3-1ab94eec3605';
@@ -62,6 +64,8 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
     let checkout: TypeOrmCheckoutStore;
     let start: StartCheckout;
     const getById = jest.fn();
+    const submit = jest.fn();
+    let awaitConcurrentProductReads: (() => Promise<void>) | null = null;
 
     async function createCheckout(
       status: VerifiedPaymentSnapshot['status'],
@@ -118,14 +122,24 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
       await dataSource.runMigrations();
       const connection = { get: async () => dataSource } as DatabaseConnection;
       checkout = new TypeOrmCheckoutStore(connection);
-      start = new StartCheckout(new TypeOrmProductReader(connection), checkout);
+      const products = new TypeOrmProductReader(connection);
+      start = new StartCheckout(products, checkout);
       const fixture = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(DatabaseConnection)
         .useValue(connection)
+        .overrideProvider(PRODUCT_READER)
+        .useValue({
+          findById: async (id: string) => {
+            const product = await products.findById(id);
+            if (awaitConcurrentProductReads)
+              await awaitConcurrentProductReads();
+            return product;
+          },
+        })
         .overrideProvider(PAYMENT_STATUS_READER)
         .useValue({ getById })
         .overrideProvider(PAYMENT_GATEWAY)
-        .useValue({ submit: jest.fn() })
+        .useValue({ submit })
         .overrideProvider(CONSENT_TERMS_READER)
         .useValue({ getCurrent: jest.fn() })
         .overrideProvider(PaymentEventVerifier)
@@ -156,6 +170,80 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
     afterAll(async () => {
       if (app) await app.close();
       if (dataSource?.isInitialized) await dataSource.destroy();
+    });
+
+    it('creates and submits only one checkout when two HTTP requests race on the same key', async () => {
+      const key = randomUUID();
+      let arrivals = 0;
+      let release!: () => void;
+      const bothAtProductRead = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      awaitConcurrentProductReads = async () => {
+        arrivals += 1;
+        if (arrivals === 2) release();
+        await bothAtProductRead;
+      };
+      submit.mockResolvedValue({
+        kind: 'ACCEPTED',
+        providerTransactionId: 'remote-race-fixture-id',
+      });
+      const body = {
+        productId,
+        quantity: 1,
+        installments: 1,
+        customerEmail: 'buyer@example.com',
+        delivery: {
+          recipientName: 'Ada Lovelace',
+          addressLine: '123 Main Street',
+          city: 'Bogota',
+        },
+        cardToken: 'transient-card-token',
+        acceptanceToken: 'transient-terms-token',
+        personalDataToken: 'transient-privacy-token',
+        acceptsEndUserPolicy: true,
+        acceptsPersonalDataAuthorization: true,
+      };
+
+      try {
+        const responses = await Promise.all(
+          [1, 2].map(() =>
+            request(app.getHttpServer())
+              .post('/checkouts')
+              .set('Idempotency-Key', key)
+              .send(body),
+          ),
+        );
+        expect(arrivals).toBe(2);
+        expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+        expect(responses[0].body.reference).toMatch(/^txn_/);
+        expect(responses[1].body.reference).toBe(responses[0].body.reference);
+        expect(responses[1].body.quote).toEqual(responses[0].body.quote);
+        for (const response of responses) {
+          // A replay may observe the durable claim before its remote outcome is recorded.
+          expect(['PENDING', 'SUBMISSION_UNKNOWN']).toContain(
+            response.body.status,
+          );
+          expect(JSON.stringify(response.body)).not.toMatch(
+            /buyer@example\.com|transient-card-token|remote-race-fixture-id/,
+          );
+        }
+        expect(submit).toHaveBeenCalledTimes(1);
+        expect(await dataSource.getRepository(TransactionEntity).count()).toBe(
+          1,
+        );
+        expect(await dataSource.getRepository(CustomerEntity).count()).toBe(1);
+        expect(await dataSource.getRepository(DeliveryEntity).count()).toBe(0);
+        expect(
+          (
+            await dataSource
+              .getRepository(ProductEntity)
+              .findOneByOrFail({ id: productId })
+          ).stock,
+        ).toBe(3);
+      } finally {
+        awaitConcurrentProductReads = null;
+      }
     });
 
     it('applies signed approval once across HTTP, authoritative lookup, and PostgreSQL', async () => {
