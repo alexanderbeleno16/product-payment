@@ -1,6 +1,6 @@
 # Backend
 
-NestJS and TypeScript API for a single-product checkout. The current backend has PostgreSQL-backed dummy products, a read-only product endpoint, and internal server-priced, idempotent PENDING checkout and sandbox-submission logic. Checkout and payment are **not yet exposed by HTTP**; stock decrement and delivery are not implemented.
+NestJS and TypeScript API for a single-product checkout. The current backend exposes product reading, server-priced quotes, current payment consents, idempotent checkout initiation, and limited local transaction-status reads. It persists PENDING checkouts and can submit one sandbox payment attempt through an outbound adapter. Provider confirmation, stock decrement, and delivery are **not implemented**.
 
 ## Run locally
 
@@ -28,10 +28,20 @@ export DATABASE_URL='postgresql://checkout:local-only@127.0.0.1:5432/checkout'
 npm run build
 npm run db:migrate
 npm run db:seed
+# First supply all PAYMENT_* variables described below from approved, untracked local configuration.
 npm run start:dev
 ```
 
-The API listens at `http://localhost:3000` by default (`PORT` may override it). `DATABASE_URL` is required; no `.env` file is loaded automatically. Wait for PostgreSQL to accept connections before running the migration. Migrations are explicit—runtime synchronization and automatic migration execution are disabled. The seed may be run again: fixed product IDs prevent duplicates and existing stock is not reset.
+The API listens at `http://localhost:3000` by default (`PORT` may override it). `DATABASE_URL` and all four `PAYMENT_*` values below are required at application startup, even for product-only reads; no `.env` file is loaded automatically. Keep payment credentials and secret values in untracked, server-side configuration. The adapter accepts only matching sandbox endpoint/key families. Configuration does **not** authorize a live sandbox request; the integration has been tested with fake transport only.
+
+| Variable | Purpose |
+| --- | --- |
+| `PAYMENT_API_BASE_URL` | Approved HTTPS sandbox API base URL ending in `/v1`. |
+| `PAYMENT_PUBLIC_KEY` | Sandbox public merchant key for current consent documents. |
+| `PAYMENT_PRIVATE_KEY` | Server-only sandbox key for transaction submission. |
+| `PAYMENT_INTEGRITY_SECRET` | Server-only sandbox integrity secret for amount/reference signing. |
+
+Wait for PostgreSQL to accept connections before running the migration. Migrations are explicit—runtime synchronization and automatic migration execution are disabled. The seed may be run again: fixed product IDs prevent duplicates and existing stock is not reset.
 
 To stop and remove the disposable database:
 
@@ -73,15 +83,30 @@ Successful response (`200 OK`):
 | Malformed or non-v4 ID | `400` | Nest validation error; persistence is not queried. |
 | Well-formed but absent UUID v4 | `404` | `Product not found`. |
 
-There is no product-creation, checkout, payment, customer, or delivery endpoint yet. The checkout use cases are internal until a later work unit exposes a validated HTTP contract. Public API documentation/collection and a hosted API URL remain future delivery items.
+The generated scaffold's `GET /` also remains. There is no product-creation, customer CRUD, delivery, signed-event, or payment-finalization endpoint. Public Swagger/OpenAPI and a hosted API URL remain future delivery items.
+
+### Checkout HTTP contract
+
+The routes below return `Cache-Control: no-store`. Their prices, fees, references, and payment status are server-owned; no raw card details belong in API requests. The browser must obtain a transient card token directly from Empresa innombrable before `POST /checkouts`.
+
+| Method and path | Input | Success | Expected rejection |
+| --- | --- | --- | --- |
+| `GET /checkout/quote` | Query: `productId` (UUID v4), `quantity` (positive integer string). | `200` with `productId`, `quantity`, `currency`, `unitPriceCents`, `productAmountCents`, `baseFeeCents`, `deliveryFeeCents`, `totalCents`. | `400` invalid input, `404` missing product, `409` insufficient stock, `422` unsupported currency. |
+| `GET /checkout/consents` | No buyer input. | `200` with sandbox `publicKey` and two current consent documents (`token`, `permalink`). | `503` if current documents cannot be read; no remote error details are exposed. |
+| `POST /checkouts` | `Idempotency-Key` header (UUID v4) and JSON body described below. | `201` with `reference`, local `status`, and server-calculated `quote`. Same-key/same-data replay returns the original result without another submission. | `400` invalid body/header or missing consent, `404` missing product, `409` stock/idempotency conflict, `422` unsupported currency. |
+| `GET /transactions/:reference` | Transaction reference plus the original `Idempotency-Key` header (UUID v4). | `200` with only `reference` and local `status`. This read does not call the provider. | `400` invalid reference/header, `404` unknown reference or nonmatching key. |
+
+The checkout JSON body has `productId` (UUID v4), `quantity` (positive integer), `customerEmail`, `delivery` (`recipientName`, `addressLine`, `city`), transient `cardToken`, `acceptanceToken`, `personalDataToken`, and both explicit booleans `acceptsEndUserPolicy: true` and `acceptsPersonalDataAuthorization: true`. The two consent tokens come from the current consent documents. Unknown body fields, including client-supplied price or status, are rejected; the HTTP response omits email, delivery details, tokens, provider ID, and idempotency key. The current status lookup uses the idempotency key as a shared secret but is **not** a complete authorization design for public deployment.
+
+`PENDING` means submission acknowledgement, **not** approval. `SUBMISSION_UNKNOWN` means the external outcome is uncertain and must not trigger a blind retry. `SUBMISSION_REJECTED` is a local submission-authentication rejection. A 201 response never proves a completed purchase, stock decrement, or delivery. No live sandbox call or publicly hosted endpoint has been verified.
 
 ## Data and architecture
 
 The first migration creates `products`: UUID primary key, name, description, three-letter uppercase currency, positive integer `price_cents`, and nonnegative integer stock. Two deterministic dummy products are inserted by the explicit seed command. A second versioned migration adds `customers` and `transactions`. The latter stores a PENDING status, unique transaction reference and idempotency key, canonical request fingerprint, quantity, product/fee/total snapshot in integer COP cents, and nullable provider-submission timestamp and provider transaction ID. Customer email and delivery details are stored with the checkout; no delivery record exists before confirmed success.
 
-The current **demo fee policy**, not an amount prescribed by the brief, is COP 2,000 base plus COP 5,000 delivery. A separate demo policy caps one checkout at COP 20,000,000; this is an application rule, not a database rule. `QuoteCheckout` validates a UUID v4 before product lookup and computes `(unit price × quantity) + both fees` with amount-cap and stock checks. `StartCheckout` first checks the idempotency key: matching canonical business data returns the original snapshot even if price or stock changed, while different data conflicts. The fingerprint excludes payment tokens. New customer and transaction rows are inserted atomically; PostgreSQL uniqueness handles competing first requests and rolls back the losing customer. A separate conditional update can durably claim provider submission once before network I/O. It is not yet invoked by an HTTP route. No stock is reserved or decremented when a PENDING checkout is created.
+The current **demo fee policy**, not an amount prescribed by the brief, is COP 2,000 base plus COP 5,000 delivery. A separate demo policy caps one checkout at COP 20,000,000; this is an application rule, not a database rule. `QuoteCheckout` validates a UUID v4 before product lookup and computes `(unit price × quantity) + both fees` with amount-cap and stock checks. `StartCheckout` first checks the idempotency key: matching canonical business data returns the original snapshot even if price or stock changed, while different data conflicts. The fingerprint excludes payment tokens. New customer and transaction rows are inserted atomically; PostgreSQL uniqueness handles competing first requests and rolls back the losing customer. A separate conditional update can durably claim provider submission once before network I/O. The `POST /checkouts` route now invokes this path. No stock is reserved or decremented when a PENDING checkout is created.
 
-The internal `InitiatePayment` use case now checks for all three transient payment/consent tokens before creating a PENDING checkout, then atomically marks its reference `SUBMISSION_UNKNOWN` while claiming it once before invoking a `PaymentGateway` port. A sandbox-only outbound adapter supports both the official test environment and the challenge's UAT sandbox, with matching key families; it constructs the provider request from the stored server-calculated total and reference, signs it with the private integrity secret, and accepts only a matching `201`/`PENDING` response as an acknowledged submission. Acknowledgement is **not** payment approval. An authentication rejection becomes local `SUBMISSION_REJECTED`; timeout, validation response, server error, or malformed response remains `SUBMISSION_UNKNOWN` because non-submission is not proved. Outcomes and the provider ID are conditionally persisted without storing card or acceptance tokens. A retry of the same idempotency key reads the original snapshot and cannot send a second request. A process crash after the durable claim leaves `SUBMISSION_UNKNOWN` without a provider ID; this must be reconciled rather than resent. These components are not yet bound to a public route or live sandbox configuration, and have only been tested with fake transport.
+The internal `InitiatePayment` use case now checks for all three transient payment/consent tokens before creating a PENDING checkout, then atomically marks its reference `SUBMISSION_UNKNOWN` while claiming it once before invoking a `PaymentGateway` port. A sandbox-only outbound adapter supports both the official test environment and the challenge's UAT sandbox, with matching key families; it constructs the provider request from the stored server-calculated total and reference, signs it with the private integrity secret, and accepts only a matching `201`/`PENDING` response as an acknowledged submission. Acknowledgement is **not** payment approval. An authentication rejection becomes local `SUBMISSION_REJECTED`; timeout, validation response, server error, or malformed response remains `SUBMISSION_UNKNOWN` because non-submission is not proved. Outcomes and the provider ID are conditionally persisted without storing card or acceptance tokens. A retry of the same idempotency key reads the original snapshot and cannot send a second request. A process crash after the durable claim leaves `SUBMISSION_UNKNOWN` without a provider ID; this must be reconciled rather than resent. The route is bound locally, but provider behavior has only been tested with fake transport; no live sandbox call has been verified.
 
 Plain product/quote values, payment status, and pricing rules live in `src/domain/`; use-case commands, results, `GetProduct`, `QuoteCheckout`, `StartCheckout`, and capability ports live in `src/application/`. Neither inner directory imports NestJS or TypeORM. Nest controllers in `src/adapters/inbound/http/` map HTTP input and output; TypeORM adapters in `src/adapters/outbound/persistence/` map storage records to plain values. Nest modules at `src/` bind adapters to ports. A lazily initialized `DatabaseConnection` owns one shared connection and its shutdown. This organization makes the dependency direction visible, but the isolated core tests and adapter tests—not directory names alone—verify it. The repository-root [architecture diagrams](../README.md#1-application-architecture-proposed) show the intended full checkout, not functionality already present.
 
@@ -104,6 +129,6 @@ docker exec product-payment-postgres psql -U checkout -d checkout -c 'CREATE DAT
 CHECKOUT_TEST_DATABASE_URL='postgresql://checkout:local-only@127.0.0.1:5432/checkout_p2_test' npm test -- --runInBand
 ```
 
-Without this variable, the PostgreSQL suites are skipped rather than replaced with mocks. Coverage is measured for this backend alone; it is not yet the final challenge-wide coverage claim. The frontend Jest runner and public payment-path tests are future work.
+Without this variable, the PostgreSQL suites are skipped rather than replaced with mocks. Coverage is measured for this backend alone; it is not yet the final challenge-wide coverage claim. The frontend Jest runner is future work. Checkout HTTP E2E tests use fake persistence and payment/consent adapters, not real sandbox credentials.
 
-On 2026-09-26, `CHECKOUT_TEST_DATABASE_URL=... npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 46 tests and measured **81.31% statements, 84.07% branches, 80.70% functions, and 82.69% lines** across `src/`, including migration and seed scripts. Four separate HTTP E2E tests also passed. This exceeds 80% for the current backend snapshot, **not** for the unfinished checkout HTTP work or the frontend; remeasure after those changes. Without the real-database variable, PostgreSQL suites are skipped and the measured percentages are lower.
+Before the checkout HTTP routes were added, on 2026-09-26, `CHECKOUT_TEST_DATABASE_URL=... npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 46 tests and measured **81.31% statements, 84.07% branches, 80.70% functions, and 82.69% lines** across `src/`, including migration and seed scripts. Four separate HTTP E2E tests also passed then. These figures are **historical**, not proof of coverage for the current HTTP changes or the frontend; remeasure the complete backend after route work. Without the real-database variable, PostgreSQL suites are skipped and the measured percentages are lower.
