@@ -4,6 +4,7 @@ import { SandboxPaymentGateway } from './sandbox-payment.gateway';
 
 const config = {
   apiBaseUrl: 'https://sandbox.example.test/v1',
+  expectedSandboxHost: 'sandbox.example.test',
   privateKey: 'prv_test_fixture_only',
   integritySecret: 'test_integrity_fixture_only',
 };
@@ -11,6 +12,7 @@ const submission: PaymentSubmission = {
   reference: 'txn_test-reference',
   amountCents: 1_700_000,
   currency: 'COP',
+  installments: 2,
   customerEmail: 'buyer@example.com',
   cardToken: 'transient-card-token',
   acceptanceToken: 'transient-terms-token',
@@ -65,7 +67,7 @@ describe('SandboxPaymentGateway', () => {
       acceptance_token: submission.acceptanceToken,
       accept_personal_auth: submission.personalDataToken,
       payment_method_type: 'CARD',
-      payment_method: { type: 'CARD', token: submission.cardToken, installments: 1 },
+      payment_method: { type: 'CARD', token: submission.cardToken, installments: 2 },
     });
     expect(sent.signature).toBe(
       createHash('sha256')
@@ -135,10 +137,24 @@ describe('SandboxPaymentGateway', () => {
     ).toThrow('Invalid sandbox payment configuration');
   });
 
+  it('rejects a prefixed third-party host and nonstandard port even with test keys', () => {
+    for (const apiBaseUrl of [
+      'https://sandbox.attacker.example/v1',
+      'https://sandbox.example.test:8443/v1',
+    ]) {
+      expect(() => new SandboxPaymentGateway(
+        { ...config, apiBaseUrl },
+        transport as typeof fetch,
+      )).toThrow('Invalid sandbox payment configuration');
+    }
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   it('accepts a UAT sandbox with matching staging keys and rejects crossed key families', async () => {
     const uat = new SandboxPaymentGateway(
       {
         apiBaseUrl: 'https://api-sandbox.example.test/v1',
+        expectedSandboxHost: 'api-sandbox.example.test',
         privateKey: 'prv_stagtest_fixture_only',
         integritySecret: 'stagtest_integrity_fixture_only',
       },
@@ -156,6 +172,7 @@ describe('SandboxPaymentGateway', () => {
         new SandboxPaymentGateway(
           {
             apiBaseUrl: 'https://api-sandbox.example.test/v1',
+            expectedSandboxHost: 'api-sandbox.example.test',
             privateKey: config.privateKey,
             integritySecret: 'stagtest_integrity_fixture_only',
           },

@@ -109,6 +109,7 @@ export class CheckoutController {
       idempotencyKey,
       productId: body.productId,
       quantity: body.quantity,
+      installments: body.installments,
       customerEmail: body.customerEmail,
       delivery: {
         recipientName: body.delivery.recipientName,

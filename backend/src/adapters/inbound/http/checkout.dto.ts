@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -53,6 +54,11 @@ export class CreateCheckoutDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  installments!: number;
 
   @IsEmail()
   @MaxLength(254)

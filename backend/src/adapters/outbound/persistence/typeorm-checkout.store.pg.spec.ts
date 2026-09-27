@@ -16,6 +16,7 @@ const input: CheckoutInput = {
   idempotencyKey: '9af0bfbc-9881-4e60-a17b-693b134c9142',
   productId: testProductId,
   quantity: 2,
+  installments: 1,
   customerEmail: 'buyer@example.com',
   delivery: {
     recipientName: 'Ada Lovelace',

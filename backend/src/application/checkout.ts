@@ -14,6 +14,7 @@ export interface CheckoutInput {
   readonly idempotencyKey: string;
   readonly productId: string;
   readonly quantity: number;
+  readonly installments: number;
   readonly customerEmail: string;
   readonly delivery: DeliveryDetails;
 }
