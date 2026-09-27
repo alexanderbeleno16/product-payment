@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -334,6 +334,33 @@ describe('Checkout HTTP contract (e2e)', () => {
       .expect(409);
     expect(createPending).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('returns a generic 500 and never logs sensitive infrastructure details', async () => {
+    const marker = 'private-payment-data-in-database-fault';
+    const errorLog = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    createPending.mockRejectedValueOnce(new Error(marker));
+    try {
+      await request(app.getHttpServer())
+        .post('/checkouts')
+        .set('Idempotency-Key', idempotencyKey)
+        .send(body)
+        .expect(500)
+        .expect(({ body: response }) => {
+          expect(response).toMatchObject({
+            statusCode: 500,
+            message: 'Internal Server Error',
+          });
+          expect(JSON.stringify(response)).not.toContain(marker);
+        });
+      expect(errorLog).toHaveBeenCalledWith('Unhandled request failure');
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(marker);
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it('returns a safe service-unavailable error when current consent documents cannot be read', async () => {
