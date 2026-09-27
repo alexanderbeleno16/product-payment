@@ -1,5 +1,8 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
-import type { PaymentStatus } from '../../../domain/checkout';
+import type {
+  FulfillmentStatus,
+  PaymentStatus,
+} from '../../../domain/checkout';
 
 @Entity({ name: 'transactions' })
 export class TransactionEntity {
@@ -35,6 +38,9 @@ export class TransactionEntity {
 
   @Column({ type: 'varchar', length: 24 })
   status!: PaymentStatus;
+
+  @Column({ name: 'fulfillment_status', type: 'varchar', length: 24 })
+  fulfillmentStatus!: FulfillmentStatus;
 
   @Column({ type: 'varchar', length: 64 })
   reference!: string;

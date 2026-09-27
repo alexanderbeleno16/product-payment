@@ -55,7 +55,7 @@ const input: CheckoutInput = {
     });
 
     beforeEach(async () => {
-      await dataSource.query('TRUNCATE TABLE transactions, customers');
+      await dataSource.query('TRUNCATE TABLE deliveries, transactions, customers');
       await dataSource.getRepository(ProductEntity).upsert(
         {
           id: testProductId,
