@@ -13,6 +13,7 @@ import { ReconcileKnownPayment } from './application/reconcile-known-payment';
 import type { ProductReader } from './application/product-reader.port';
 import { CheckoutController } from './adapters/inbound/http/checkout.controller';
 import { CardTokenizationController } from './adapters/inbound/http/card-tokenization.controller';
+import { TokenizationRateLimitGuard } from './adapters/inbound/http/tokenization-rate-limit.guard';
 import { PaymentEventController } from './adapters/inbound/http/payment-event.controller';
 import { PaymentEventVerifier } from './adapters/inbound/http/payment-event.verifier';
 import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
@@ -47,6 +48,7 @@ function requiredPaymentEnv(name: string): string {
     PaymentEventController,
   ],
   providers: [
+    TokenizationRateLimitGuard,
     {
       provide: SandboxCardTokenization,
       useFactory: (): SandboxCardTokenization =>

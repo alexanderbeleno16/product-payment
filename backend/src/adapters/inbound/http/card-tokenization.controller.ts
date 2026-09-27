@@ -5,6 +5,7 @@ import {
   Header,
   Post,
   ServiceUnavailableException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -14,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { IsString, Matches, MaxLength } from 'class-validator';
 import { SandboxCardTokenization } from '../../outbound/payment/sandbox-card-tokenization';
+import { TokenizationRateLimitGuard } from './tokenization-rate-limit.guard';
 
 export class EncryptedCardDto {
   @ApiProperty({ description: 'Compact JWE encrypted in the browser' })
@@ -27,6 +29,7 @@ export class EncryptedCardDto {
 
 @ApiTags('Checkout')
 @Controller('checkout')
+@UseGuards(TokenizationRateLimitGuard)
 export class CardTokenizationController {
   constructor(private readonly tokenization: SandboxCardTokenization) {}
 
@@ -35,6 +38,10 @@ export class CardTokenizationController {
   @ApiOperation({ summary: 'Read the public card-encryption key' })
   @ApiResponse({ status: 200, description: 'Public PEM only' })
   @ApiResponse({ status: 503, description: 'Key unavailable' })
+  @ApiResponse({
+    status: 429,
+    description: 'Per-peer or process rate limit exceeded',
+  })
   async key(): Promise<{ publicKey: string }> {
     try {
       return { publicKey: await this.tokenization.encryptionKey() };
@@ -49,6 +56,10 @@ export class CardTokenizationController {
   @ApiResponse({ status: 201, description: 'Opaque card token only' })
   @ApiResponse({ status: 400, description: 'Invalid encrypted payload' })
   @ApiResponse({ status: 503, description: 'Tokenization unavailable' })
+  @ApiResponse({
+    status: 429,
+    description: 'Per-peer or process rate limit exceeded',
+  })
   async cardToken(@Body() body: EncryptedCardDto): Promise<{ token: string }> {
     try {
       return { token: await this.tokenization.tokenize(body.payload) };

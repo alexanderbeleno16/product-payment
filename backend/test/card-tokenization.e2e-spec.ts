@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { CardTokenizationController } from '../src/adapters/inbound/http/card-tokenization.controller';
 import { SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
+import { TokenizationRateLimitGuard } from '../src/adapters/inbound/http/tokenization-rate-limit.guard';
 
 const header = Buffer.from(
   JSON.stringify({ alg: 'RSA-OAEP-256', enc: 'A256GCM' }),
@@ -15,10 +16,12 @@ describe('Same-origin card-tokenization HTTP boundary', () => {
   const encryptionKey = jest.fn();
   const tokenize = jest.fn();
 
-  beforeAll(async () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
     const module = await Test.createTestingModule({
       controllers: [CardTokenizationController],
       providers: [
+        TokenizationRateLimitGuard,
         {
           provide: SandboxCardTokenization,
           useValue: { encryptionKey, tokenize },
@@ -36,10 +39,9 @@ describe('Same-origin card-tokenization HTTP boundary', () => {
     );
     await app.init();
   });
-  afterAll(async () => {
+  afterEach(async () => {
     await app.close();
   });
-  beforeEach(() => jest.clearAllMocks());
 
   it('returns only public PEM and opaque token, never provider body', async () => {
     encryptionKey.mockResolvedValue('public-pem');
@@ -85,5 +87,36 @@ describe('Same-origin card-tokenization HTTP boundary', () => {
     expect(
       JSON.stringify(keyResponse.body) + JSON.stringify(tokenResponse.body),
     ).not.toContain('remote-sensitive-body');
+  });
+
+  it('limits a burst before validation or outbound tokenization, ignoring forwarded IP', async () => {
+    tokenize.mockResolvedValue('tok_fixture');
+    for (let index = 0; index < 10; index++) {
+      await request(app.getHttpServer())
+        .post('/checkout/card-tokens')
+        .set('X-Forwarded-For', `192.0.2.${index + 1}`)
+        .send({ payload })
+        .expect(201);
+    }
+    const blocked = await request(app.getHttpServer())
+      .post('/checkout/card-tokens')
+      .set('X-Forwarded-For', '198.51.100.1')
+      .send({ invalid: true })
+      .expect(429);
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(tokenize).toHaveBeenCalledTimes(10);
+  });
+
+  it('limits public-key reads before outbound I/O', async () => {
+    encryptionKey.mockResolvedValue('public-pem');
+    for (let index = 0; index < 30; index++)
+      await request(app.getHttpServer())
+        .get('/checkout/tokenization-key')
+        .expect(200);
+    const blocked = await request(app.getHttpServer())
+      .get('/checkout/tokenization-key')
+      .expect(429);
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(encryptionKey).toHaveBeenCalledTimes(30);
   });
 });
