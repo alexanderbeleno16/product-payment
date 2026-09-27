@@ -9,6 +9,7 @@ import { CustomerEntity } from './customer.entity';
 import { TypeOrmCheckoutStore } from './typeorm-checkout.store';
 import { TypeOrmProductReader } from './typeorm-product.reader';
 import { IdempotencyKeyTaken } from '../../../application/checkout-store.port';
+import { TypeOrmFinalizationStore } from './typeorm-finalization.store';
 
 const testDatabaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
 const testProductId = 'd815b5c8-4458-4b77-8286-b2d523552959';
@@ -55,7 +56,9 @@ const input: CheckoutInput = {
     });
 
     beforeEach(async () => {
-      await dataSource.query('TRUNCATE TABLE deliveries, transactions, customers');
+      await dataSource.query(
+        'TRUNCATE TABLE deliveries, transactions, customers',
+      );
       await dataSource.getRepository(ProductEntity).upsert(
         {
           id: testProductId,
@@ -155,11 +158,14 @@ const input: CheckoutInput = {
         status: 'PENDING',
         providerTransactionId: 'provider-test-1',
       });
-      await expect(
-        store.recordSubmissionOutcome(first.value.reference, {
+      expect(
+        await store.recordSubmissionOutcome(first.value.reference, {
           kind: 'REJECTED',
         }),
-      ).rejects.toThrow('Submission outcome could not be recorded');
+      ).toMatchObject({
+        status: 'PENDING',
+        providerTransactionId: 'provider-test-1',
+      });
       expect(await store.claimSubmission(first.value.reference)).toBe(false);
       expect(
         await dataSource.getRepository(ProductEntity).findOneByOrFail({
@@ -173,7 +179,9 @@ const input: CheckoutInput = {
       if (!first.ok) throw new Error('Expected pending checkout');
       expect(await store.claimSubmission(first.value.reference)).toBe(true);
       // A crash before any provider result is durably observable as unknown.
-      expect(await store.findByIdempotencyKey(input.idempotencyKey)).toMatchObject({
+      expect(
+        await store.findByIdempotencyKey(input.idempotencyKey),
+      ).toMatchObject({
         status: 'SUBMISSION_UNKNOWN',
         providerTransactionId: null,
       });
@@ -192,6 +200,43 @@ const input: CheckoutInput = {
           id: testProductId,
         }),
       ).toMatchObject({ stock: 4 });
+    });
+
+    it('preserves a verified terminal event that arrives before the POST response', async () => {
+      const first = await start.execute(input);
+      if (!first.ok) throw new Error('Expected pending checkout');
+      await store.claimSubmission(first.value.reference);
+      const finalizer = new TypeOrmFinalizationStore({
+        get: async () => dataSource,
+      } as DatabaseConnection);
+      const providerTransactionId = 'provider-before-response';
+      await finalizer.finalize({
+        providerTransactionId,
+        reference: first.value.reference,
+        amountCents: first.value.totalCents,
+        currency: 'COP',
+        status: 'APPROVED',
+      });
+      const late = await store.recordSubmissionOutcome(first.value.reference, {
+        kind: 'ACCEPTED',
+        providerTransactionId,
+      });
+      expect(late).toMatchObject({
+        status: 'APPROVED',
+        providerTransactionId,
+        fulfillmentStatus: 'CREATED',
+      });
+      await expect(
+        store.recordSubmissionOutcome(first.value.reference, {
+          kind: 'ACCEPTED',
+          providerTransactionId: 'different-provider-id',
+        }),
+      ).rejects.toThrow('Provider transaction identity conflict');
+      expect(
+        await dataSource
+          .getRepository(ProductEntity)
+          .findOneByOrFail({ id: testProductId }),
+      ).toMatchObject({ stock: 2 });
     });
   },
 );

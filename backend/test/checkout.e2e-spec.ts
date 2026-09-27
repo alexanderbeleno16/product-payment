@@ -10,7 +10,12 @@ import type {
 } from '../src/application/checkout-store.port';
 import type { PaymentSubmissionOutcome } from '../src/application/payment-gateway.port';
 import { CHECKOUT_STORE } from '../src/checkout.module';
-import { CONSENT_TERMS_READER, PAYMENT_GATEWAY } from '../src/checkout.tokens';
+import {
+  CONSENT_TERMS_READER,
+  PAYMENT_GATEWAY,
+  PAYMENT_STATUS_READER,
+} from '../src/checkout.tokens';
+import { PaymentEventVerifier } from '../src/adapters/inbound/http/payment-event.verifier';
 import { PRODUCT_READER } from '../src/products.module';
 import { configureOpenApi } from '../src/openapi';
 
@@ -77,6 +82,7 @@ describe('Checkout HTTP contract (e2e)', () => {
         idempotencyKey: command.input.idempotencyKey,
         requestFingerprint: command.requestFingerprint,
         status: 'PENDING',
+        fulfillmentStatus: 'NOT_STARTED',
         submissionStartedAt: null,
         providerTransactionId: null,
         createdAt: new Date('2026-09-26T00:00:00Z'),
@@ -124,6 +130,10 @@ describe('Checkout HTTP contract (e2e)', () => {
       .useValue({ submit })
       .overrideProvider(CONSENT_TERMS_READER)
       .useValue({ getCurrent })
+      .overrideProvider(PAYMENT_STATUS_READER)
+      .useValue({ getById: jest.fn() })
+      .overrideProvider(PaymentEventVerifier)
+      .useValue(new PaymentEventVerifier('test_events_fixture_only'))
       .compile();
     app = fixture.createNestApplication();
     configureOpenApi(app);

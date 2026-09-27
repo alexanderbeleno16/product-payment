@@ -48,7 +48,7 @@ const productId = '9bf29f21-5931-45a9-a3fc-67a9728787b3';
     function snapshot(
       transaction: CheckoutTransaction,
       status: VerifiedPaymentSnapshot['status'] = 'APPROVED',
-      providerTransactionId = randomUUID(),
+      providerTransactionId: string = randomUUID(),
     ): VerifiedPaymentSnapshot {
       return {
         providerTransactionId,

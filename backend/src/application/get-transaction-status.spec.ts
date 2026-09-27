@@ -19,6 +19,7 @@ const transaction: CheckoutTransaction = {
   deliveryFeeCents: 5_000,
   totalCents: 115_000,
   status: 'SUBMISSION_UNKNOWN',
+  fulfillmentStatus: 'NOT_STARTED',
   submissionStartedAt: new Date('2026-09-26T12:00:00Z'),
   providerTransactionId: 'private-provider-identifier',
   createdAt: new Date('2026-09-26T11:59:00Z'),
