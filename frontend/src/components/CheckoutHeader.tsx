@@ -1,3 +1,5 @@
+import '@fontsource/grand-hotel/latin-400.css'
+
 const steps = [
   'Producto',
   'Tarjeta y entrega',
@@ -15,29 +17,33 @@ function CheckoutHeader({ step }: { step: 1 | 2 }) {
             src="/brand-mark.webp"
             width="256"
             height="256"
-            alt="Marca de la tienda"
+            alt=""
           />
-          <span>Compra</span>
+          <span className="brand__name">ShopiFast</span>
         </div>
-        <span className="step-pill">
-          Paso {step} de 5 · {steps[step - 1]}
-        </span>
+        {step > 1 && (
+          <span className="step-pill">
+            Paso {step} de 5 · {steps[step - 1]}
+          </span>
+        )}
       </div>
-      <section aria-label="Progreso de la compra" className="checkout-progress">
-        <ol>
-          {steps.map((label, index) => (
-            <li
-              key={`${label}-${index}`}
-              aria-current={index + 1 === step ? 'step' : undefined}
-            >
-              <span className="checkout-progress__dot" aria-hidden="true" />
-              <span>
-                {index + 1}. {label}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {step > 1 && (
+        <section aria-label="Progreso de la compra" className="checkout-progress">
+          <ol>
+            {steps.map((label, index) => (
+              <li
+                key={`${label}-${index}`}
+                aria-current={index + 1 === step ? 'step' : undefined}
+              >
+                <span className="checkout-progress__dot" aria-hidden="true" />
+                <span>
+                  {index + 1}. {label}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </header>
   )
 }

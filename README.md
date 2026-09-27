@@ -192,11 +192,11 @@ erDiagram
     }
 ```
 
-The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. The separate image proposal below is not part of this schema.
+The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. Static frontend images are not part of this schema.
 
-## Image handling (proposed)
+## Image handling (current)
 
-The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by frontend configuration and served as a static asset, without a database image column or upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
+The single-product SPA serves the optimized headphone image from `frontend/public/wireless-headphones.webp` and the store mark from `frontend/public/brand-mark.webp`. The product page reserves image space, provides alternative text, and has been visually checked at narrow and desktop widths. PostgreSQL has no image column or upload service, and the product API does not return an image URL. The second seeded product is not displayed and has no frontend image; a future catalog would need an explicit product-to-image contract rather than reusing the headphone asset.
 
 ## 5. AWS deployment topology (proposed)
 

@@ -1,6 +1,8 @@
 # Frontend checkout
 
-React, TypeScript, Vite, and Redux Toolkit power the mobile-first checkout SPA. **Current scope (F1/F1L):** the Spanish (Colombia) product screen reads one seeded product and a server-priced quote, lets the buyer choose an in-stock quantity, and shows loading, error, retry, and sold-out states. The API remains authoritative for price and stock. The display name and description are localized for this one verified product ID; the frontend does not translate arbitrary API products or decide payment success.
+React, TypeScript, Vite, and Redux Toolkit power the mobile-first checkout SPA. **Current scope (F1/F1L/F1P):** the Spanish (Colombia) ShopiFast product screen reads one seeded product and a server-priced quote, lets the buyer choose an in-stock quantity, and shows loading, error, retry, and sold-out states. The API remains authoritative for price and stock. The display name and description are localized for this one verified product ID; the frontend does not translate arbitrary API products or decide payment success.
+
+This is a **single-product checkout**, not a catalog. The backend seed also creates a portable speaker, and the API exposes products by known ID (`GET /products/:id`), but this SPA intentionally presents only the headphones; it has no product list or navigation to the speaker. The product photo is a local, optimized asset at `public/wireless-headphones.webp`, and the store mark is at `public/brand-mark.webp`. Neither image is stored in PostgreSQL or served by the product API. The ShopiFast wordmark uses a self-hosted Grand Hotel font from `@fontsource/grand-hotel` (OFL-1.1), scoped to the brand text; no font CDN is needed.
 
 The **Tarjeta y entrega** screen is a temporary placeholder. Card entry, tokenization, summary, payment submission, final status, and refresh recovery are not implemented in this frontend yet. There is no deployed frontend URL.
 

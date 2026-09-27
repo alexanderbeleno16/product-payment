@@ -74,8 +74,10 @@ test('loads one product and an authoritative quote before enabling card entry', 
       name: 'Audífonos inalámbricos negros de diadema',
     }),
   ).toBeVisible()
-  expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
-  expect(screen.getByText('Paso 1 de 5 · Producto')).toBeVisible()
+  expect(screen.getByText('ShopiFast')).toBeVisible()
+  expect(screen.queryByRole('region', { name: 'Progreso de la compra' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Paso 1 de 5 · Producto')).not.toBeInTheDocument()
+  expect(screen.getByText('Cantidad')).toBeVisible()
 
   const payButton = screen.getByRole('button', {
     name: 'Pagar con tarjeta de crédito',
@@ -89,6 +91,8 @@ test('loads one product and an authoritative quote before enabling card entry', 
 
   await user.click(payButton)
   expect(screen.getByRole('heading', { name: 'Tarjeta y entrega' })).toHaveFocus()
+  expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
+  expect(screen.getByText('Paso 2 de 5 · Tarjeta y entrega')).toBeVisible()
   expect(
     screen.getByText(
       'El ingreso de tarjeta y los datos de entrega aún no están disponibles.',
@@ -98,6 +102,7 @@ test('loads one product and an authoritative quote before enabling card entry', 
   expect(
     await screen.findByRole('heading', { name: 'Audífonos inalámbricos' }),
   ).toBeVisible()
+  expect(screen.queryByRole('region', { name: 'Progreso de la compra' })).not.toBeInTheDocument()
 })
 
 test('re-quotes quantity and never allows more units than current stock', async () => {

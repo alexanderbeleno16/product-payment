@@ -116,28 +116,31 @@ function ProductScreen() {
                 <span>Precio por unidad</span>
                 <strong>{formatMoney(product.priceCents)}</strong>
               </div>
-              <div
-                className="quantity-control"
-                role="group"
-                aria-label="Cantidad"
-              >
-                <button
-                  type="button"
-                  aria-label="Disminuir cantidad"
-                  onClick={() => dispatch(quantityChanged(quantity - 1))}
-                  disabled={quantity <= 1 || soldOut}
+              <div className="quantity-field">
+                <span>Cantidad</span>
+                <div
+                  className="quantity-control"
+                  role="group"
+                  aria-label="Cantidad"
                 >
-                  −
-                </button>
-                <output aria-label="Cantidad seleccionada">{quantity}</output>
-                <button
-                  type="button"
-                  aria-label="Aumentar cantidad"
-                  onClick={() => dispatch(quantityChanged(quantity + 1))}
-                  disabled={soldOut || quantity >= product.stock}
-                >
-                  +
-                </button>
+                  <button
+                    type="button"
+                    aria-label="Disminuir cantidad"
+                    onClick={() => dispatch(quantityChanged(quantity - 1))}
+                    disabled={quantity <= 1 || soldOut}
+                  >
+                    −
+                  </button>
+                  <output aria-label="Cantidad seleccionada">{quantity}</output>
+                  <button
+                    type="button"
+                    aria-label="Aumentar cantidad"
+                    onClick={() => dispatch(quantityChanged(quantity + 1))}
+                    disabled={soldOut || quantity >= product.stock}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
 
