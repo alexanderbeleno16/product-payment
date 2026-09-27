@@ -1,5 +1,5 @@
 import { Provider } from 'react-redux'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { makeStore } from './app/store'
@@ -149,7 +149,8 @@ test('shows ten server products with optimized loading priorities and opens a ne
   expect(cards[9].querySelector('img')).toHaveAttribute('width', '768')
   expect(cards[9].querySelector('img')).toHaveAttribute('height', '768')
   expect(cards[9].querySelector('img')).toHaveAttribute('src', '/phone-stand.webp')
-  expect(screen.getByRole('button', { name: 'Ver producto: Mochila urbana negra' })).toHaveTextContent('Ver producto')
+  expect(screen.queryByText('Ver producto')).not.toBeInTheDocument()
+  expect(within(cards[2]).getByRole('button', { name: 'Ver producto: Mochila urbana negra' })).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Ver producto: Mochila urbana negra' }))
   expect(await screen.findByRole('heading', { name: 'Mochila urbana negra', level: 1 })).toHaveFocus()
@@ -163,6 +164,40 @@ test('shows ten server products with optimized loading priorities and opens a ne
   await user.click(screen.getByRole('button', { name: 'Catálogo' }))
   expect(await screen.findByRole('heading', { name: 'Explora nuestros productos' })).toHaveFocus()
   expect(screen.getAllByRole('article')).toHaveLength(10)
+})
+
+test('sorts a copy of the catalog by descending price and restores server order', async () => {
+  installApi([headphones, speaker, ...additionalProducts])
+  const user = userEvent.setup()
+  renderCheckout()
+
+  expect(await screen.findByRole('heading', { name: 'Explora nuestros productos' })).toBeVisible()
+  const firstCard = () => screen.getAllByRole('article')[0]
+  expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
+
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Ordenar productos' }), 'price-desc')
+  expect(firstCard()).toHaveTextContent('Teclado mecánico compacto gris oscuro')
+  expect(firstCard().querySelector('img')).toHaveAttribute('fetchpriority', 'high')
+  expect(firstCard().querySelector('img')).toHaveAttribute('loading', 'eager')
+  expect(screen.getAllByRole('article')[9]).toHaveTextContent('Soporte plegable para teléfono gris')
+
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Ordenar productos' }), 'default')
+  expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
+})
+
+test('opens a product with the full-card native button using the keyboard', async () => {
+  installApi()
+  const user = userEvent.setup()
+  renderCheckout()
+
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 2 })).toBeVisible()
+  await user.tab()
+  expect(screen.getByRole('combobox', { name: 'Ordenar productos' })).toHaveFocus()
+  await user.tab()
+  const firstCard = screen.getAllByRole('article')[0]
+  expect(within(firstCard).getByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toHaveFocus()
 })
 
 test('returns through the breadcrumb and selects a new product with reset quantity', async () => {

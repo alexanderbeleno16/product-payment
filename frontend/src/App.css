@@ -107,7 +107,12 @@
   white-space: nowrap;
 }
 .catalog-heading {
+  background: #fff;
+  border: 1px solid #e9edf5;
+  border-radius: 1.5rem;
+  box-shadow: 0 0.8rem 2rem #1f2a530c;
   margin-bottom: 1.25rem;
+  padding: 1.4rem;
 }
 .catalog-main {
   padding-bottom: 3rem;
@@ -121,6 +126,30 @@
   color: #647189;
   line-height: 1.5;
   margin: 0.7rem 0 0;
+}
+.catalog-sort {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+.catalog-sort label {
+  color: #52617f;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.catalog-sort select {
+  appearance: auto;
+  background: #fff;
+  border: 1px solid #cbd6ea;
+  border-radius: 0.75rem;
+  color: #1c3154;
+  font: inherit;
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
 }
 .catalog-grid {
   display: grid;
@@ -165,6 +194,20 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  position: relative;
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+.catalog-card:hover {
+  box-shadow: 0 1rem 2.2rem #1f2a5320;
+  transform: translateY(-2px);
+}
+.catalog-card:focus-within {
+  outline: 3px solid #1451d9;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-card { transition: none; }
+  .catalog-card:hover { transform: none; }
 }
 .catalog-card__media {
   align-items: center;
@@ -185,7 +228,7 @@
   display: grid;
   flex: 1;
   gap: 0.45rem;
-  grid-template-rows: auto 1fr auto auto auto;
+  grid-template-rows: auto 1fr auto auto;
   min-width: 0;
   padding: 0.85rem;
 }
@@ -213,10 +256,12 @@
   font-size: 0.72rem;
   font-weight: 700;
 }
-.catalog-card .secondary-button {
-  font-size: 0.8rem;
-  margin-top: 0.15rem;
-  padding-inline: 0.4rem;
+.catalog-card__action {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  position: absolute;
   width: 100%;
 }
 .product-layout {
@@ -387,21 +432,8 @@
   font-weight: 700;
   margin: -0.6rem 0 1.4rem;
 }
-.stock-badge::before {
-  background: #22ad89;
-  border-radius: 100%;
-  content: '';
-  display: inline-block;
-  height: 0.4rem;
-  margin-right: 0.35rem;
-  vertical-align: 0.15rem;
-  width: 0.4rem;
-}
 .stock-badge--empty {
   color: #a92c38;
-}
-.stock-badge--empty::before {
-  background: #d84d57;
 }
 
 .product-card {

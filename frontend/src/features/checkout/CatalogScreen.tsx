@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
@@ -12,6 +12,10 @@ function CatalogScreen() {
   )
   const titleRef = useRef<HTMLHeadingElement>(null)
   const returningFromProduct = useRef(catalog.length > 0)
+  const [sortOrder, setSortOrder] = useState<'default' | 'price-desc'>('default')
+  const visibleProducts = sortOrder === 'price-desc'
+    ? [...catalog].sort((first, second) => second.priceCents - first.priceCents)
+    : catalog
 
   useEffect(() => {
     if (returningFromProduct.current) titleRef.current?.focus()
@@ -69,48 +73,59 @@ function CatalogScreen() {
           </div>
         )}
         {catalog.length > 0 && (
-          <div className="catalog-grid">
-            {catalog.map((product, index) => {
-              const image = getProductImage(product.id)
-              return (
-                <article className="catalog-card" key={product.id}>
-                  <div className="catalog-card__media">
-                    {image ? (
-                      <img
-                        src={image.src}
-                        alt=""
-                        width="768"
-                        height="768"
-                        loading={index < 2 ? 'eager' : 'lazy'}
-                        fetchPriority={index === 0 ? 'high' : 'auto'}
-                        decoding="async"
-                      />
-                    ) : (
-                      <span>Imagen no disponible</span>
-                    )}
-                  </div>
-                  <div className="catalog-card__body">
-                    <h2>{product.name}</h2>
-                    <p>{product.description}</p>
-                    <strong>{formatMoney(product.priceCents)}</strong>
-                    <span className="catalog-card__stock">
-                      {product.stock === 0
-                        ? 'Agotado'
-                        : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
-                    </span>
+          <>
+            <div className="catalog-sort">
+              <label htmlFor="catalog-sort-order">Ordenar productos</label>
+              <select
+                id="catalog-sort-order"
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value === 'price-desc' ? 'price-desc' : 'default')}
+              >
+                <option value="default">Orden predeterminado</option>
+                <option value="price-desc">Precio: mayor a menor</option>
+              </select>
+            </div>
+            <div className="catalog-grid">
+              {visibleProducts.map((product, index) => {
+                const image = getProductImage(product.id)
+                return (
+                  <article className="catalog-card" key={product.id}>
+                    <div className="catalog-card__media">
+                      {image ? (
+                        <img
+                          src={image.src}
+                          alt=""
+                          width="768"
+                          height="768"
+                          loading={index < 2 ? 'eager' : 'lazy'}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
+                          decoding="async"
+                        />
+                      ) : (
+                        <span>Imagen no disponible</span>
+                      )}
+                    </div>
+                    <div className="catalog-card__body">
+                      <h2>{product.name}</h2>
+                      <p>{product.description}</p>
+                      <strong>{formatMoney(product.priceCents)}</strong>
+                      <span className="catalog-card__stock">
+                        {product.stock === 0
+                          ? 'Agotado'
+                          : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      className="secondary-button"
+                      className="catalog-card__action"
                       aria-label={`Ver producto: ${product.name}`}
                       onClick={() => dispatch(productSelected(product.id))}
-                    >
-                      Ver producto
-                    </button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
+                    />
+                  </article>
+                )
+              })}
+            </div>
+          </>
         )}
       </main>
     </>
