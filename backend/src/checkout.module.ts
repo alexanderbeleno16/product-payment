@@ -52,6 +52,7 @@ function requiredPaymentEnv(name: string): string {
       provide: PAYMENT_GATEWAY,
       useFactory: (): PaymentGateway => new SandboxPaymentGateway({
         apiBaseUrl: requiredPaymentEnv('PAYMENT_API_BASE_URL'),
+        expectedSandboxHost: requiredPaymentEnv('PAYMENT_SANDBOX_HOST'),
         privateKey: requiredPaymentEnv('PAYMENT_PRIVATE_KEY'),
         integritySecret: requiredPaymentEnv('PAYMENT_INTEGRITY_SECRET'),
       }),
@@ -60,6 +61,7 @@ function requiredPaymentEnv(name: string): string {
       provide: CONSENT_TERMS_READER,
       useFactory: (): ConsentTermsReader => new SandboxConsentTermsReader({
         apiBaseUrl: requiredPaymentEnv('PAYMENT_API_BASE_URL'),
+        expectedSandboxHost: requiredPaymentEnv('PAYMENT_SANDBOX_HOST'),
         publicKey: requiredPaymentEnv('PAYMENT_PUBLIC_KEY'),
       }),
     },

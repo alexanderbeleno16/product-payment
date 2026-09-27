@@ -14,6 +14,7 @@ function normalize(input: CheckoutInput): CheckoutInput {
     idempotencyKey: input.idempotencyKey.trim().toLowerCase(),
     productId: input.productId.trim().toLowerCase(),
     quantity: input.quantity,
+    installments: input.installments,
     customerEmail: input.customerEmail.trim().toLowerCase(),
     delivery: {
       recipientName: input.delivery.recipientName.trim(),
@@ -29,6 +30,8 @@ function isValid(input: CheckoutInput): boolean {
     isUuidV4(input.productId) &&
     Number.isSafeInteger(input.quantity) &&
     input.quantity > 0 &&
+    Number.isSafeInteger(input.installments) &&
+    input.installments > 0 &&
     input.customerEmail.length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customerEmail) &&
     input.delivery.recipientName.length > 0 &&
@@ -54,17 +57,18 @@ export class StartCheckout {
 
     // The fingerprint intentionally omits transient payment credentials, current price,
     // and the key itself. A replay returns the original amount even if price changes.
+    const fingerprintFields: (string | number)[] = [
+      input.productId,
+      input.quantity,
+      input.customerEmail,
+      input.delivery.recipientName,
+      input.delivery.addressLine,
+      input.delivery.city,
+    ];
+    // Preserve the existing fingerprint for one installment so older checkouts replay safely.
+    if (input.installments !== 1) fingerprintFields.push(input.installments);
     const requestFingerprint = createHash('sha256')
-      .update(
-        JSON.stringify([
-          input.productId,
-          input.quantity,
-          input.customerEmail,
-          input.delivery.recipientName,
-          input.delivery.addressLine,
-          input.delivery.city,
-        ]),
-      )
+      .update(JSON.stringify(fingerprintFields))
       .digest('hex');
     const existing = await this.store.findByIdempotencyKey(
       input.idempotencyKey,

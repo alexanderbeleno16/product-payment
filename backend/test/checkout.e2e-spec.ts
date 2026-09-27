@@ -23,6 +23,7 @@ const product = {
 const body = {
   productId,
   quantity: 1,
+  installments: 2,
   customerEmail: 'buyer@example.com',
   delivery: {
     recipientName: 'Ada Lovelace',
@@ -172,6 +173,10 @@ describe('Checkout HTTP contract (e2e)', () => {
       { ...body, acceptsEndUserPolicy: undefined },
       { ...body, cardToken: undefined },
       { ...body, quantity: '1' },
+      { ...body, installments: undefined },
+      { ...body, installments: 0 },
+      { ...body, installments: 1.5 },
+      { ...body, installments: Number.MAX_SAFE_INTEGER + 1 },
     ]) {
       await request(app.getHttpServer())
         .post('/checkouts')
@@ -256,8 +261,14 @@ describe('Checkout HTTP contract (e2e)', () => {
       .set('Idempotency-Key', idempotencyKey)
       .send({ ...body, quantity: 2 })
       .expect(409);
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send({ ...body, installments: 3 })
+      .expect(409);
     expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit.mock.calls[0][0]).toMatchObject({ installments: 2 });
     expect(submit.mock.calls[0][0]).not.toHaveProperty('acceptsEndUserPolicy');
     expect(submit.mock.calls[0][0]).not.toHaveProperty('acceptsPersonalDataAuthorization');
   });

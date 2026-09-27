@@ -9,6 +9,7 @@ const input: CheckoutInput = {
   idempotencyKey: 'cf2cdd86-05ea-4c7c-adeb-812927f37873',
   productId: '8a52ea31-08d9-4f52-a604-00e56143dce0',
   quantity: 1,
+  installments: 2,
   customerEmail: 'buyer@example.com',
   delivery: {
     recipientName: 'Ada Lovelace',
@@ -188,6 +189,7 @@ describe('InitiatePayment', () => {
         reference: expect.stringMatching(/^txn_/),
         amountCents: 1_700_000,
         currency: 'COP',
+        installments: 2,
         customerEmail: 'buyer@example.com',
       }),
     );
@@ -205,6 +207,16 @@ describe('InitiatePayment', () => {
       value: { status: 'SUBMISSION_UNKNOWN', providerTransactionId: null },
     });
     expect(await initiate.execute(input, credentials, consent)).toEqual(first);
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a changed installment selection without another submission', async () => {
+    const first = await initiate.execute(input, credentials, consent);
+    expect(first.ok).toBe(true);
+    expect(
+      await initiate.execute({ ...input, installments: 3 }, credentials, consent),
+    ).toEqual({ ok: false, reason: 'IDEMPOTENCY_CONFLICT' });
+    expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
   });
 

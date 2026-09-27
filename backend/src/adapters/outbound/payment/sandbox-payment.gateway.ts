@@ -7,6 +7,7 @@ import type {
 
 export interface SandboxPaymentConfig {
   readonly apiBaseUrl: string;
+  readonly expectedSandboxHost: string;
   readonly privateKey: string;
   readonly integritySecret: string;
   readonly timeoutMs?: number;
@@ -34,6 +35,8 @@ export class SandboxPaymentGateway implements PaymentGateway {
       config.integritySecret.startsWith('stagtest_integrity_');
     if (
       base.protocol !== 'https:' ||
+      base.hostname !== config.expectedSandboxHost ||
+      base.port !== '' ||
       (!matchingTestKeys && !matchingUatKeys) ||
       base.pathname.replace(/\/$/, '') !== '/v1' ||
       base.username ||
@@ -68,7 +71,7 @@ export class SandboxPaymentGateway implements PaymentGateway {
       payment_method: {
         type: 'CARD',
         token: command.cardToken,
-        installments: 1,
+        installments: command.installments,
       },
     };
 

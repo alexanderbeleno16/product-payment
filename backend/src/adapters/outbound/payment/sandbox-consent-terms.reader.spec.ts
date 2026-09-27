@@ -2,6 +2,7 @@ import { SandboxConsentTermsReader } from './sandbox-consent-terms.reader';
 
 const config = {
   apiBaseUrl: 'https://sandbox.example.test/v1',
+  expectedSandboxHost: 'sandbox.example.test',
   publicKey: 'pub_test_fixture_only',
 };
 const merchantInfo = {
@@ -61,6 +62,7 @@ describe('SandboxConsentTermsReader', () => {
     const uat = new SandboxConsentTermsReader(
       {
         apiBaseUrl: 'https://api-sandbox.example.test/v1',
+        expectedSandboxHost: 'api-sandbox.example.test',
         publicKey: 'pub_stagtest_fixture_only',
       },
       transport as typeof fetch,
@@ -85,6 +87,8 @@ describe('SandboxConsentTermsReader', () => {
       'http://sandbox.example.test/v1',
       'https://user:pass@sandbox.example.test/v1',
       'https://sandbox.example.test/v1?leak=1',
+      'https://sandbox.attacker.example/v1',
+      'https://sandbox.example.test:8443/v1',
       'not-a-url',
     ]) {
       expect(() => new SandboxConsentTermsReader(
