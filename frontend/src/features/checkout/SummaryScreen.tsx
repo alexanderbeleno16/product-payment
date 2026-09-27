@@ -82,11 +82,14 @@ function SummaryScreen({ prepared, onLeave }: Props) {
           </dl>
         </section>
       </div>
-      <div className="summary-next" role="note">
-        <button type="button" className="primary-button" disabled>Confirmar y pagar</button>
-        <p>La confirmación del pago se habilitará en el siguiente hito. Este resumen no envía una transacción.</p>
-      </div>
+      <p className="summary-next" role="note">La confirmación del pago se habilitará en el siguiente hito. Este resumen no envía una transacción.</p>
     </main>
+    <footer className="checkout-footer summary-footer">
+      <div className="checkout-footer__inner">
+        <div className="subtotal"><span>Total estimado</span><strong>{status === 'ready' && quote ? formatMoney(quote.totalCents) : '—'}</strong></div>
+        <button type="button" className="primary-button" disabled>Confirmar y pagar</button>
+      </div>
+    </footer>
   </>
 }
 

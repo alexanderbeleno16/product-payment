@@ -20,6 +20,8 @@ export interface TokenizedCardDelivery {
   cardToken: string
   cardBrand: Exclude<CardBrand, 'unknown'>
   cardLastFour: string
+  acceptsEndUserPolicy: true
+  acceptsPersonalDataAuthorization: true
   customerEmail: string
   delivery: { recipientName: string; addressLine: string; city: string }
   consentTokens: { endUserPolicy: string; personalDataAuthorization: string }
