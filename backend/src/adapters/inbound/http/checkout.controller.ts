@@ -16,7 +16,18 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import type { CheckoutFailure, CheckoutInput, CheckoutTransaction } from '../../../application/checkout';
+import {
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import type {
+  CheckoutFailure,
+  CheckoutInput,
+  CheckoutTransaction,
+} from '../../../application/checkout';
 import type { ConsentTermsReader } from '../../../application/consent-terms.port';
 import { GetTransactionStatus } from '../../../application/get-transaction-status';
 import { InitiatePayment } from '../../../application/initiate-payment';
@@ -28,9 +39,18 @@ import {
   QuoteQueryDto,
   TransactionReferenceDto,
 } from './checkout.dto';
+import {
+  CheckoutQuoteResponseDto,
+  CheckoutResponseDto,
+  ConsentTermsResponseDto,
+  TransactionStatusResponseDto,
+} from './response.dto';
 
 const IdempotencyKey = createParamDecorator(
-  (_data: unknown, context: ExecutionContext): string | string[] | undefined => {
+  (
+    _data: unknown,
+    context: ExecutionContext,
+  ): string | string[] | undefined => {
     const request = context.switchToHttp().getRequest<{
       headers: Record<string, string | string[] | undefined>;
     }>();
@@ -47,9 +67,13 @@ function rejectCheckout(reason: CheckoutFailure): never {
     case 'INSUFFICIENT_STOCK':
       throw new ConflictException('Insufficient stock');
     case 'IDEMPOTENCY_CONFLICT':
-      throw new ConflictException('Idempotency key conflicts with the original checkout');
+      throw new ConflictException(
+        'Idempotency key conflicts with the original checkout',
+      );
     case 'UNSUPPORTED_CURRENCY':
-      throw new UnprocessableEntityException('Product currency is not supported');
+      throw new UnprocessableEntityException(
+        'Product currency is not supported',
+      );
   }
 }
 
@@ -66,6 +90,7 @@ function publicQuote(quote: CheckoutQuote): CheckoutQuote {
   };
 }
 
+@ApiTags('Checkout')
 @Controller()
 export class CheckoutController {
   constructor(
@@ -78,14 +103,33 @@ export class CheckoutController {
 
   @Get('checkout/quote')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Quote one product using server-owned prices and fees',
+  })
+  @ApiResponse({ status: 200, type: CheckoutQuoteResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid product ID or quantity' })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  @ApiResponse({ status: 409, description: 'Insufficient stock' })
+  @ApiResponse({ status: 422, description: 'Unsupported product currency' })
   async quote(@Query() query: QuoteQueryDto): Promise<CheckoutQuote> {
-    const result = await this.quoteCheckout.execute(query.productId, query.quantity);
+    const result = await this.quoteCheckout.execute(
+      query.productId,
+      query.quantity,
+    );
     if (!result.ok) return rejectCheckout(result.reason);
     return publicQuote(result.value);
   }
 
   @Get('checkout/consents')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Read both current consent documents and the public key',
+  })
+  @ApiResponse({ status: 200, type: ConsentTermsResponseDto })
+  @ApiResponse({
+    status: 503,
+    description: 'Current consent documents unavailable',
+  })
   async consents() {
     try {
       const terms = await this.consentTerms.getCurrent();
@@ -95,12 +139,40 @@ export class CheckoutController {
         personalDataAuthorization: terms.personalDataAuthorization,
       };
     } catch {
-      throw new ServiceUnavailableException('Consent terms are temporarily unavailable');
+      throw new ServiceUnavailableException(
+        'Consent terms are temporarily unavailable',
+      );
     }
   }
 
   @Post('checkouts')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Create or replay a local checkout and initiate payment once',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description:
+      'Buyer-generated UUID v4; reuse only for the same checkout intent',
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiResponse({
+    status: 201,
+    type: CheckoutResponseDto,
+    description:
+      'Local checkout created or replayed; PENDING is not payment approval',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input, header, or missing explicit consent',
+  })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Insufficient stock or conflicting idempotency key',
+  })
+  @ApiResponse({ status: 422, description: 'Unsupported product currency' })
   async create(
     @IdempotencyKey(new ParseUUIDPipe({ version: '4' })) idempotencyKey: string,
     @Body() body: CreateCheckoutDto,
@@ -135,6 +207,25 @@ export class CheckoutController {
 
   @Get('transactions/:reference')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Read narrow local status for the original checkout key',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Original checkout UUID v4',
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiParam({ name: 'reference', description: 'Local transaction reference' })
+  @ApiResponse({ status: 200, type: TransactionStatusResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid reference or idempotency key',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Reference and key do not identify the same checkout',
+  })
   async status(
     @Param() params: TransactionReferenceDto,
     @IdempotencyKey(new ParseUUIDPipe({ version: '4' })) idempotencyKey: string,
