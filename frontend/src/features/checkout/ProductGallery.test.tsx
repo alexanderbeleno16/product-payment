@@ -137,6 +137,24 @@ test('opens the chosen speaker thumbnail directly and restores focus on close', 
   expect(thumbnail).toHaveFocus()
 })
 
+test('keeps full-screen images non-draggable while repeatedly navigating with focused controls', async () => {
+  const user = userEvent.setup()
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  await user.click(screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  }))
+
+  const dialog = screen.getByRole('dialog', { name: 'Galería de imágenes de Audífonos inalámbricos' })
+  const next = within(dialog).getByRole('button', { name: 'Imagen siguiente en pantalla completa' })
+  const previous = within(dialog).getByRole('button', { name: 'Imagen anterior en pantalla completa' })
+
+  for (const button of [next, next, previous, previous]) {
+    await user.click(button)
+    expect(button).toHaveFocus()
+    expect(within(dialog).getByRole('img')).toHaveAttribute('draggable', 'false')
+  }
+})
+
 test.each([
   ['Mochila urbana negra', '9b135df6-299a-43c1-a33f-6f3a0fc9281a', '/urban-backpack.webp', '/urban-backpack-side.webp'],
   ['Billetera compacta', 'ee4216cd-55e7-42c1-9c25-398c385955ad', '/compact-wallet.webp', '/compact-wallet-open.webp'],

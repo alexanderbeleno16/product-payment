@@ -513,6 +513,9 @@
   height: 100%;
   min-height: 0;
   object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
   width: 100%;
 }
 .gallery-lightbox__position {

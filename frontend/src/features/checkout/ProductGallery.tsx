@@ -186,7 +186,7 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
           <button type="button" aria-label="Imagen anterior en pantalla completa" onClick={() => showNextImage(-1)}>
             <GalleryChevron direction="previous" />
           </button>
-          <img src={activeImage.src} alt={activeImage.alt} width="768" height="768" decoding="async" />
+          <img src={activeImage.src} alt={activeImage.alt} width="768" height="768" decoding="async" draggable={false} />
           <button type="button" aria-label="Imagen siguiente en pantalla completa" onClick={() => showNextImage(1)}>
             <GalleryChevron direction="next" />
           </button>
