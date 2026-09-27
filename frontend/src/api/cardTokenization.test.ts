@@ -5,7 +5,7 @@ jest.mock('jose', () => ({
   importSPKI: jest.fn(),
   CompactEncrypt: jest.fn(),
 }))
-jest.mock('./paymentApiBaseUrl', () => ({ paymentApiBaseUrl: '' }))
+jest.mock('./paymentApiBaseUrl', () => ({ paymentApiBaseUrl: '', paymentSandboxHost: 'sandbox.example.com' }))
 
 const card = {
   number: '4'.repeat(16),
@@ -15,7 +15,7 @@ const card = {
   cardHolder: 'Fixture Holder',
 }
 const merchantKey = 'pub_test_fixture_only'
-const baseUrl = 'https://payments.example.com/v1'
+const baseUrl = 'https://sandbox.example.com/v1'
 const signal = new AbortController().signal
 const encryptionKey = '-----BEGIN PUBLIC KEY-----\nZmFrZQ==\n-----END PUBLIC KEY-----'
 
@@ -47,7 +47,7 @@ test('encrypts card data in the browser and posts only a compact JWE', async () 
 
   await expect(tokenizeCard(card, merchantKey, signal, baseUrl)).resolves.toBe('tok_test_fixture')
   expect(fetchMock).toHaveBeenNthCalledWith(1,
-    'https://payments.example.com/v1/tokens/keys/tokenization',
+    'https://sandbox.example.com/v1/tokens/keys/tokenization',
     expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal), credentials: 'omit', redirect: 'error' }),
   )
   expect(importSPKI).toHaveBeenCalledWith(encryptionKey, 'RSA-OAEP-256')
@@ -56,7 +56,7 @@ test('encrypts card data in the browser and posts only a compact JWE', async () 
   }
   expect(encryptor.setProtectedHeader).toHaveBeenCalledWith({ alg: 'RSA-OAEP-256', enc: 'A256GCM' })
   expect(fetchMock).toHaveBeenNthCalledWith(2,
-    'https://payments.example.com/v1/tokens/cards',
+    'https://sandbox.example.com/v1/tokens/cards',
     expect.objectContaining({
       method: 'POST', credentials: 'omit', redirect: 'error',
       signal: expect.any(AbortSignal),
@@ -69,13 +69,37 @@ test('encrypts card data in the browser and posts only a compact JWE', async () 
 })
 
 test('rejects insecure configuration and malformed card before any network call', async () => {
-  await expect(tokenizeCard(card, merchantKey, signal, 'http://payments.example.com/v1'))
+  await expect(tokenizeCard(card, merchantKey, signal, 'http://sandbox.example.com/v1'))
     .rejects.toEqual(new TokenizationError('configuration'))
   await expect(tokenizeCard({ ...card, cvc: 'x' }, merchantKey, signal, baseUrl))
     .rejects.toEqual(new TokenizationError('invalid_card'))
   await expect(tokenizeCard(card, 'private_fixture', signal, baseUrl))
     .rejects.toEqual(new TokenizationError('configuration'))
   expect(fetch).not.toHaveBeenCalled()
+})
+
+test('binds the sandbox origin to the public-key family before network access', async () => {
+  for (const [url, key, host] of [
+    ['https://other.example.com/v1', merchantKey, 'sandbox.example.com'],
+    ['https://sandbox.attacker.example/v1', merchantKey, 'sandbox.example.com'],
+    [baseUrl, 'pub_stagtest_fixture_only', 'sandbox.example.com'],
+    ['https://api-sandbox.example.com/v1', merchantKey, 'api-sandbox.example.com'],
+    [baseUrl, merchantKey, ''],
+  ]) {
+    await expect(tokenizeCard(card, key, signal, url, host))
+      .rejects.toEqual(new TokenizationError('configuration'))
+  }
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('accepts the paired UAT sandbox origin and public-key family', async () => {
+  const fetchMock = jest.mocked(fetch)
+  fetchMock.mockResolvedValueOnce(response({ data: { publicKey: encryptionKey } }))
+  fetchMock.mockResolvedValueOnce(response({ status: 'CREATED', data: { id: 'tok_test_fixture' } }, 201))
+  await expect(tokenizeCard(card, 'pub_stagtest_fixture_only', signal,
+    'https://api-sandbox.example.com/v1', 'api-sandbox.example.com'))
+    .resolves.toBe('tok_test_fixture')
+  expect(fetchMock.mock.calls[0][0]).toBe('https://api-sandbox.example.com/v1/tokens/keys/tokenization')
 })
 
 test('rejects malformed key and token responses without exposing provider bodies', async () => {

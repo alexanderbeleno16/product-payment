@@ -3,6 +3,7 @@ import type {
   ConsentTerms,
   ConsentTermsReader,
 } from '../../../application/consent-terms.port';
+import { ConsentTermsUnavailable } from '../../../application/consent-terms.port';
 
 export interface SandboxConsentTermsConfig {
   readonly apiBaseUrl: string;
@@ -51,8 +52,9 @@ export class SandboxConsentTermsReader implements ConsentTermsReader {
   }
 
   async getCurrent(): Promise<ConsentTerms> {
+    let response: Response;
     try {
-      const response = await this.transport(this.infoUrl, {
+      response = await this.transport(this.infoUrl, {
         method: 'GET',
         headers: {
           'x-merchant-public-key': this.config.publicKey,
@@ -61,28 +63,36 @@ export class SandboxConsentTermsReader implements ConsentTermsReader {
         signal: AbortSignal.timeout(this.timeoutMs),
         redirect: 'error',
       });
-      if (response.status !== 200) throw new Error('Unexpected merchant-info response');
-      const payload: unknown = await response.json();
-      if (!isRecord(payload) || !isRecord(payload.data)) {
-        throw new Error('Invalid merchant-info response');
-      }
-      const endUserPolicy = documentFrom(payload.data.presigned_acceptance, 'END_USER_POLICY');
-      const personalDataAuthorization = documentFrom(
-        payload.data.presigned_personal_data_auth,
-        'PERSONAL_DATA_AUTH',
+    } catch (error) {
+      const name = error instanceof Error ? error.name : '';
+      throw new ConsentTermsUnavailable(
+        name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'network',
       );
-      if (!endUserPolicy || !personalDataAuthorization) {
-        throw new Error('Invalid merchant-info response');
-      }
-      return {
-        publicKey: this.config.publicKey,
-        endUserPolicy,
-        personalDataAuthorization,
-      };
-    } catch {
-      // Never relay remote response bodies, tokens, or transport errors to callers.
-      throw new Error('Consent terms are temporarily unavailable');
     }
+    if (response.status === 401 || response.status === 403)
+      throw new ConsentTermsUnavailable('auth');
+    if (response.status !== 200)
+      throw new ConsentTermsUnavailable(response.status >= 500 ? 'network' : 'invalid_response');
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new ConsentTermsUnavailable('invalid_response');
+    }
+    if (!isRecord(payload) || !isRecord(payload.data))
+      throw new ConsentTermsUnavailable('invalid_response');
+    const endUserPolicy = documentFrom(payload.data.presigned_acceptance, 'END_USER_POLICY');
+    const personalDataAuthorization = documentFrom(
+      payload.data.presigned_personal_data_auth,
+      'PERSONAL_DATA_AUTH',
+    );
+    if (!endUserPolicy || !personalDataAuthorization)
+      throw new ConsentTermsUnavailable('invalid_response');
+    return {
+      publicKey: this.config.publicKey,
+      endUserPolicy,
+      personalDataAuthorization,
+    };
   }
 }
 
