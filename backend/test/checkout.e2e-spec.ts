@@ -4,11 +4,15 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import type { CheckoutTransaction } from '../src/application/checkout';
-import type { CheckoutStore, NewPendingCheckout } from '../src/application/checkout-store.port';
+import type {
+  CheckoutStore,
+  NewPendingCheckout,
+} from '../src/application/checkout-store.port';
 import type { PaymentSubmissionOutcome } from '../src/application/payment-gateway.port';
 import { CHECKOUT_STORE } from '../src/checkout.module';
 import { CONSENT_TERMS_READER, PAYMENT_GATEWAY } from '../src/checkout.tokens';
 import { PRODUCT_READER } from '../src/products.module';
+import { configureOpenApi } from '../src/openapi';
 
 const productId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
 const idempotencyKey = 'cf2cdd86-05ea-4c7c-adeb-812927f37873';
@@ -88,18 +92,24 @@ describe('Checkout HTTP contract (e2e)', () => {
       async (_reference: string, outcome: PaymentSubmissionOutcome) => {
         saved = {
           ...saved!,
-          status: outcome.kind === 'ACCEPTED' ? 'PENDING' : 'SUBMISSION_UNKNOWN',
-          providerTransactionId: outcome.kind === 'ACCEPTED'
-            ? outcome.providerTransactionId
-            : null,
+          status:
+            outcome.kind === 'ACCEPTED' ? 'PENDING' : 'SUBMISSION_UNKNOWN',
+          providerTransactionId:
+            outcome.kind === 'ACCEPTED' ? outcome.providerTransactionId : null,
         };
         return saved;
       },
     );
-    submit.mockResolvedValue({ kind: 'ACCEPTED', providerTransactionId: 'remote-private-id' });
+    submit.mockResolvedValue({
+      kind: 'ACCEPTED',
+      providerTransactionId: 'remote-private-id',
+    });
     getCurrent.mockResolvedValue({
       publicKey: 'pub_test_example',
-      endUserPolicy: { token: 'terms-token', permalink: 'https://example.test/terms' },
+      endUserPolicy: {
+        token: 'terms-token',
+        permalink: 'https://example.test/terms',
+      },
       personalDataAuthorization: {
         token: 'privacy-token',
         permalink: 'https://example.test/privacy',
@@ -116,11 +126,129 @@ describe('Checkout HTTP contract (e2e)', () => {
       .useValue({ getCurrent })
       .compile();
     app = fixture.createNestApplication();
+    configureOpenApi(app);
     await app.init();
   });
 
   afterEach(async () => {
     await app.close();
+  });
+
+  it('serves an accurate local OpenAPI document', async () => {
+    await request(app.getHttpServer())
+      .get('/api')
+      .expect(200)
+      .expect(({ text: html }) => {
+        expect(html).toContain('Swagger UI');
+      });
+    const { body: document } = await request(app.getHttpServer())
+      .get('/api-json')
+      .expect(200);
+    expect(document.openapi).toMatch(/^3\./);
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining([
+        '/products/{id}',
+        '/checkout/quote',
+        '/checkout/consents',
+        '/checkouts',
+        '/transactions/{reference}',
+      ]),
+    );
+    expect(document.paths['/']).toBeUndefined();
+
+    const quote = document.paths['/checkout/quote'].get;
+    expect(quote.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'productId',
+          in: 'query',
+          required: true,
+        }),
+        expect.objectContaining({
+          name: 'quantity',
+          in: 'query',
+          required: true,
+        }),
+      ]),
+    );
+    expect(quote.responses['200'].content['application/json'].schema.$ref).toBe(
+      '#/components/schemas/CheckoutQuoteResponseDto',
+    );
+
+    const create = document.paths['/checkouts'].post;
+    expect(create.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Idempotency-Key',
+          in: 'header',
+          required: true,
+        }),
+      ]),
+    );
+    expect(create.responses['201'].description).toContain(
+      'not payment approval',
+    );
+    expect(
+      create.responses['201'].content['application/json'].schema.$ref,
+    ).toBe('#/components/schemas/CheckoutResponseDto');
+    expect(create.responses).toHaveProperty('400');
+    expect(create.responses).toHaveProperty('404');
+    expect(create.responses).toHaveProperty('409');
+    expect(create.responses).toHaveProperty('422');
+
+    const schemas = document.components.schemas;
+    expect(schemas.CreateCheckoutDto.required).toEqual(
+      expect.arrayContaining([
+        'installments',
+        'delivery',
+        'cardToken',
+        'acceptanceToken',
+        'personalDataToken',
+        'acceptsEndUserPolicy',
+        'acceptsPersonalDataAuthorization',
+      ]),
+    );
+    expect(schemas.CreateCheckoutDto.properties.delivery.$ref).toBe(
+      '#/components/schemas/DeliveryDto',
+    );
+    expect(schemas.DeliveryDto.required).toEqual(
+      expect.arrayContaining(['recipientName', 'addressLine', 'city']),
+    );
+    expect(
+      schemas.CreateCheckoutDto.properties.acceptsEndUserPolicy.enum,
+    ).toEqual([true]);
+    expect(
+      schemas.CreateCheckoutDto.properties.acceptsPersonalDataAuthorization
+        .enum,
+    ).toEqual([true]);
+    expect(schemas.CreateCheckoutDto.properties.installments.minimum).toBe(1);
+    expect(document.paths['/transactions/{reference}'].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Idempotency-Key',
+          in: 'header',
+          required: true,
+        }),
+      ]),
+    );
+    expect(
+      document.paths['/transactions/{reference}'].get.responses['200'].content[
+        'application/json'
+      ].schema.$ref,
+    ).toBe('#/components/schemas/TransactionStatusResponseDto');
+    expect(
+      document.paths['/products/{id}'].get.responses['200'].content[
+        'application/json'
+      ].schema.$ref,
+    ).toBe('#/components/schemas/ProductResponseDto');
+    for (const responseSchema of [
+      schemas.CheckoutResponseDto,
+      schemas.TransactionStatusResponseDto,
+    ]) {
+      expect(JSON.stringify(responseSchema)).not.toMatch(
+        /cardToken|acceptanceToken|personalDataToken|customerEmail|delivery|idempotencyKey|providerTransactionId/,
+      );
+    }
   });
 
   it('returns a server-priced quote with strict quantity validation', async () => {
@@ -151,7 +279,10 @@ describe('Checkout HTTP contract (e2e)', () => {
       .expect(({ body: response }) => {
         expect(response).toEqual({
           publicKey: 'pub_test_example',
-          endUserPolicy: { token: 'terms-token', permalink: 'https://example.test/terms' },
+          endUserPolicy: {
+            token: 'terms-token',
+            permalink: 'https://example.test/terms',
+          },
           personalDataAuthorization: {
             token: 'privacy-token',
             permalink: 'https://example.test/privacy',
@@ -206,7 +337,9 @@ describe('Checkout HTTP contract (e2e)', () => {
   });
 
   it('returns a safe service-unavailable error when current consent documents cannot be read', async () => {
-    getCurrent.mockRejectedValueOnce(new Error('remote details must remain private'));
+    getCurrent.mockRejectedValueOnce(
+      new Error('remote details must remain private'),
+    );
     await request(app.getHttpServer())
       .get('/checkout/consents')
       .expect(503)
@@ -216,7 +349,10 @@ describe('Checkout HTTP contract (e2e)', () => {
   });
 
   it('requires a valid idempotency key before creating a checkout', async () => {
-    await request(app.getHttpServer()).post('/checkouts').send(body).expect(400);
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .send(body)
+      .expect(400);
     await request(app.getHttpServer())
       .post('/checkouts')
       .set('Idempotency-Key', 'not-a-uuid')
@@ -247,7 +383,12 @@ describe('Checkout HTTP contract (e2e)', () => {
       },
     });
     const responseText = JSON.stringify(first.body);
-    for (const secret of [body.cardToken, body.customerEmail, idempotencyKey, 'remote-private-id']) {
+    for (const secret of [
+      body.cardToken,
+      body.customerEmail,
+      idempotencyKey,
+      'remote-private-id',
+    ]) {
       expect(responseText).not.toContain(secret);
     }
     await request(app.getHttpServer())
@@ -270,7 +411,9 @@ describe('Checkout HTTP contract (e2e)', () => {
     expect(submit).toHaveBeenCalledTimes(1);
     expect(submit.mock.calls[0][0]).toMatchObject({ installments: 2 });
     expect(submit.mock.calls[0][0]).not.toHaveProperty('acceptsEndUserPolicy');
-    expect(submit.mock.calls[0][0]).not.toHaveProperty('acceptsPersonalDataAuthorization');
+    expect(submit.mock.calls[0][0]).not.toHaveProperty(
+      'acceptsPersonalDataAuthorization',
+    );
   });
 
   it('reads status only with the matching key and returns no private fields', async () => {

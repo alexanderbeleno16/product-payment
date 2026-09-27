@@ -32,7 +32,7 @@ npm run db:seed
 npm run start:dev
 ```
 
-The API listens at `http://localhost:3000` by default (`PORT` may override it). `DATABASE_URL` and all five `PAYMENT_*` values below are required at application startup, even for product-only reads; no `.env` file is loaded automatically. Keep payment credentials and secret values in untracked, server-side configuration. The adapter requires an independently configured exact sandbox hostname and matching endpoint/key families. Configuration does **not** authorize a live sandbox request; the integration has been tested with fake transport only.
+The API listens at `http://localhost:3000` by default (`PORT` may override it). Local interactive API documentation is at [Swagger UI](http://localhost:3000/api); its generated [OpenAPI JSON](http://localhost:3000/api-json) describes the same running routes. These are **local URLs**, not verified public deployment links. `DATABASE_URL` and all five `PAYMENT_*` values below are required at application startup, even for product-only reads; no `.env` file is loaded automatically. Keep payment credentials and secret values in untracked, server-side configuration. The adapter requires an independently configured exact sandbox hostname and matching endpoint/key families. Configuration does **not** authorize a live sandbox request; the integration has been tested with fake transport only.
 
 | Variable | Purpose |
 | --- | --- |
@@ -84,11 +84,11 @@ Successful response (`200 OK`):
 | Malformed or non-v4 ID | `400` | Nest validation error; persistence is not queried. |
 | Well-formed but absent UUID v4 | `404` | `Product not found`. |
 
-The generated scaffold's `GET /` also remains. There is no product-creation, customer CRUD, delivery, signed-event, or payment-finalization endpoint. Public Swagger/OpenAPI and a hosted API URL remain future delivery items.
+The generated scaffold's `GET /` also remains but is excluded from the checkout OpenAPI document. There is no product-creation, customer CRUD, delivery, signed-event, or payment-finalization endpoint. A publicly hosted Swagger/OpenAPI URL and API URL remain future delivery items.
 
 ### Checkout HTTP contract
 
-The routes below return `Cache-Control: no-store`. Their prices, fees, references, and payment status are server-owned; no raw card details belong in API requests. The browser must obtain a transient card token directly from Empresa innombrable before `POST /checkouts`.
+The routes below return `Cache-Control: no-store` and are described in the generated [local OpenAPI document](http://localhost:3000/api-json). Their prices, fees, references, and payment status are server-owned; no raw card details belong in API requests. The browser must obtain a transient card token directly from Empresa innombrable before `POST /checkouts`.
 
 | Method and path | Input | Success | Expected rejection |
 | --- | --- | --- | --- |
