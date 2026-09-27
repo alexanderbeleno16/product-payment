@@ -51,6 +51,7 @@ export class InitiatePayment {
         reference: checkout.value.reference,
         amountCents: checkout.value.totalCents,
         currency: checkout.value.currency,
+        installments: input.installments,
         customerEmail: input.customerEmail.trim().toLowerCase(),
       });
     } catch {

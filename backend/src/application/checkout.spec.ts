@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { CheckoutInput, CheckoutTransaction } from './checkout';
 import {
   BASE_FEE_CENTS,
@@ -20,6 +21,7 @@ const input: CheckoutInput = {
   idempotencyKey: key,
   productId,
   quantity: 2,
+  installments: 1,
   customerEmail: 'buyer@example.com',
   delivery: {
     recipientName: 'Ada Lovelace',
@@ -156,6 +158,21 @@ describe('checkout application', () => {
         reference: expect.stringMatching(/^txn_[0-9a-f-]{36}$/),
       }),
     );
+    const legacyFingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          productId,
+          2,
+          'buyer@example.com',
+          'Ada Lovelace',
+          '123 Main Street',
+          'Bogota',
+        ]),
+      )
+      .digest('hex');
+    expect(createPending.mock.calls[0][0].requestFingerprint).toBe(
+      legacyFingerprint,
+    );
     expect(claimSubmission).not.toHaveBeenCalled();
   });
 
@@ -176,7 +193,7 @@ describe('checkout application', () => {
     expect(createPending).not.toHaveBeenCalled();
   });
 
-  it('rejects same key with changed delivery or quantity', async () => {
+  it('rejects same key with changed delivery, quantity, or installments', async () => {
     const useCase = new StartCheckout(reader, store);
     const first = await useCase.execute(input);
     if (!first.ok) throw new Error('Expected pending checkout');
@@ -191,6 +208,10 @@ describe('checkout application', () => {
         delivery: { ...input.delivery, city: 'Medellin' },
       }),
     ).toEqual({ ok: false, reason: 'IDEMPOTENCY_CONFLICT' });
+    expect(await useCase.execute({ ...input, installments: 2 })).toEqual({
+      ok: false,
+      reason: 'IDEMPOTENCY_CONFLICT',
+    });
   });
 
   it('resolves a concurrent unique-key loser to the winning snapshot', async () => {
@@ -228,6 +249,19 @@ describe('checkout application', () => {
     ).toEqual({ ok: false, reason: 'INSUFFICIENT_STOCK' });
     expect(createPending).not.toHaveBeenCalled();
     expect(claimSubmission).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe or missing installments before persistence', async () => {
+    for (const installments of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(
+        await new StartCheckout(reader, store).execute({
+          ...input,
+          installments,
+        }),
+      ).toEqual({ ok: false, reason: 'INVALID_INPUT' });
+    }
+    expect(createPending).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
   });
 
   it('propagates an unexpected persistence fault instead of treating it as an idempotent replay', async () => {

@@ -6,6 +6,7 @@ import type {
 
 export interface SandboxConsentTermsConfig {
   readonly apiBaseUrl: string;
+  readonly expectedSandboxHost: string;
   readonly publicKey: string;
   readonly timeoutMs?: number;
 }
@@ -31,6 +32,8 @@ export class SandboxConsentTermsReader implements ConsentTermsReader {
       base.hostname.startsWith('api-sandbox.') && config.publicKey.startsWith('pub_stagtest_');
     if (
       base.protocol !== 'https:' ||
+      base.hostname !== config.expectedSandboxHost ||
+      base.port !== '' ||
       (!officialSandbox && !uatSandbox) ||
       base.pathname.replace(/\/$/, '') !== '/v1' ||
       base.username ||

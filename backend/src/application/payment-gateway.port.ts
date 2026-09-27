@@ -8,6 +8,7 @@ export interface PaymentSubmission extends PaymentCredentials {
   readonly reference: string;
   readonly amountCents: number;
   readonly currency: 'COP';
+  readonly installments: number;
   readonly customerEmail: string;
 }
 
