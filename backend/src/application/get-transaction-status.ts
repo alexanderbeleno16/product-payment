@@ -1,10 +1,11 @@
 import type { CheckoutTransaction } from './checkout';
 import type { CheckoutStore } from './checkout-store.port';
 
-export type TransactionStatusView = Pick<
-  CheckoutTransaction,
-  'reference' | 'status'
->;
+export interface TransactionStatusView {
+  readonly reference: string;
+  readonly paymentStatus: CheckoutTransaction['status'];
+  readonly fulfillmentStatus: CheckoutTransaction['fulfillmentStatus'];
+}
 
 export type TransactionStatusResult =
   | { readonly ok: true; readonly value: TransactionStatusView }
@@ -29,7 +30,8 @@ export class GetTransactionStatus {
       ok: true,
       value: {
         reference: transaction.reference,
-        status: transaction.status,
+        paymentStatus: transaction.status,
+        fulfillmentStatus: transaction.fulfillmentStatus,
       },
     };
   }

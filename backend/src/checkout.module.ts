@@ -9,6 +9,7 @@ import { StartCheckout } from './application/start-checkout';
 import { FinalizeVerifiedPayment } from './application/finalize-verified-payment';
 import type { PaymentStatusReader } from './application/payment-status-reader.port';
 import { ReceivePaymentEvent } from './application/receive-payment-event';
+import { ReconcileKnownPayment } from './application/reconcile-known-payment';
 import type { ProductReader } from './application/product-reader.port';
 import { CheckoutController } from './adapters/inbound/http/checkout.controller';
 import { PaymentEventController } from './adapters/inbound/http/payment-event.controller';
@@ -69,6 +70,15 @@ function requiredPaymentEnv(name: string): string {
       inject: [PAYMENT_STATUS_READER, FinalizeVerifiedPayment],
     },
     {
+      provide: ReconcileKnownPayment,
+      useFactory: (
+        checkouts: CheckoutStore,
+        receivePaymentEvent: ReceivePaymentEvent,
+      ): ReconcileKnownPayment =>
+        new ReconcileKnownPayment(checkouts, receivePaymentEvent),
+      inject: [CHECKOUT_STORE, ReceivePaymentEvent],
+    },
+    {
       provide: CHECKOUT_STORE,
       useFactory: (connection: DatabaseConnection): CheckoutStore =>
         new TypeOrmCheckoutStore(connection),
@@ -123,6 +133,11 @@ function requiredPaymentEnv(name: string): string {
       inject: [CHECKOUT_STORE],
     },
   ],
-  exports: [CHECKOUT_STORE, QuoteCheckout, StartCheckout],
+  exports: [
+    CHECKOUT_STORE,
+    QuoteCheckout,
+    StartCheckout,
+    ReconcileKnownPayment,
+  ],
 })
 export class CheckoutModule {}

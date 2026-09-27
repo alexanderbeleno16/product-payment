@@ -60,6 +60,7 @@ describe('Checkout HTTP contract (e2e)', () => {
 
   const store: CheckoutStore = {
     findByIdempotencyKey,
+    findByReference: jest.fn(),
     createPending,
     claimSubmission,
     recordSubmissionOutcome,
@@ -246,6 +247,11 @@ describe('Checkout HTTP contract (e2e)', () => {
         'application/json'
       ].schema.$ref,
     ).toBe('#/components/schemas/TransactionStatusResponseDto');
+    expect(
+      Object.keys(
+        document.components.schemas.TransactionStatusResponseDto.properties,
+      ),
+    ).toEqual(['reference', 'paymentStatus', 'fulfillmentStatus']);
     expect(
       document.paths['/products/{id}'].get.responses['200'].content[
         'application/json'
@@ -470,6 +476,25 @@ describe('Checkout HTTP contract (e2e)', () => {
       .set('Idempotency-Key', idempotencyKey)
       .expect(200)
       .expect('Cache-Control', 'no-store')
-      .expect({ reference: created.body.reference, status: 'PENDING' });
+      .expect({
+        reference: created.body.reference,
+        paymentStatus: 'PENDING',
+        fulfillmentStatus: 'NOT_STARTED',
+      });
+
+    saved = {
+      ...saved!,
+      status: 'APPROVED',
+      fulfillmentStatus: 'STOCK_UNAVAILABLE',
+    };
+    await request(app.getHttpServer())
+      .get(url)
+      .set('Idempotency-Key', idempotencyKey)
+      .expect(200)
+      .expect({
+        reference: created.body.reference,
+        paymentStatus: 'APPROVED',
+        fulfillmentStatus: 'STOCK_UNAVAILABLE',
+      });
   });
 });
