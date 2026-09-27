@@ -79,7 +79,8 @@ export async function getProduct(
   signal: AbortSignal,
 ): Promise<Product> {
   const data = await readJson(`/products/${encodeURIComponent(id)}`, signal)
-  if (!isProduct(data)) throw new Error('Invalid product response')
+  if (!isProduct(data) || data.id !== id)
+    throw new Error('Invalid product response')
   return data
 }
 

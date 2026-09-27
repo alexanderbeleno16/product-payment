@@ -1,9 +1,9 @@
 const steps = [
-  'Product',
-  'Card & delivery',
-  'Summary',
-  'Status',
-  'Product',
+  'Producto',
+  'Tarjeta y entrega',
+  'Resumen',
+  'Estado',
+  'Producto',
 ] as const
 
 function CheckoutHeader({ step }: { step: 1 | 2 }) {
@@ -15,15 +15,15 @@ function CheckoutHeader({ step }: { step: 1 | 2 }) {
             src="/brand-mark.webp"
             width="256"
             height="256"
-            alt="Store mark"
+            alt="Marca de la tienda"
           />
-          <span>Checkout</span>
+          <span>Compra</span>
         </div>
         <span className="step-pill">
-          Step {step} of 5 · {steps[step - 1]}
+          Paso {step} de 5 · {steps[step - 1]}
         </span>
       </div>
-      <section aria-label="Checkout progress" className="checkout-progress">
+      <section aria-label="Progreso de la compra" className="checkout-progress">
         <ol>
           {steps.map((label, index) => (
             <li

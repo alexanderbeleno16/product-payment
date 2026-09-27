@@ -19,15 +19,15 @@ function CardPlaceholder() {
       <main className="checkout-main">
         <div className="state-panel">
           <h1 ref={titleRef} tabIndex={-1}>
-            Card & delivery
+            Tarjeta y entrega
           </h1>
-          <p>Card and delivery details are the next step.</p>
+          <p>El ingreso de tarjeta y los datos de entrega aún no están disponibles.</p>
           <button
             type="button"
             className="secondary-button"
             onClick={() => dispatch(productReturnRequested())}
           >
-            Back to product
+            Volver al producto
           </button>
         </div>
       </main>

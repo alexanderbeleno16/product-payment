@@ -33,7 +33,7 @@
   font-size: 0.75rem;
   font-weight: 650;
   padding: 0.45rem 0.8rem;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .checkout-progress {

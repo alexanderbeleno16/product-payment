@@ -4,6 +4,7 @@ import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
 import {
   cardEntryRequested,
+  CHECKOUT_PRODUCT_ID,
   loadProduct,
   loadQuote,
   quantityChanged,
@@ -40,7 +41,7 @@ function ProductScreen() {
         <CheckoutHeader step={1} />
         <main className="checkout-main">
           <div className="state-panel" role="status">
-            Loading product…
+            Cargando producto…
           </div>
         </main>
       </>
@@ -53,14 +54,14 @@ function ProductScreen() {
         <CheckoutHeader step={1} />
         <main className="checkout-main">
           <div className="state-panel" role="alert">
-            <h1>Product unavailable</h1>
-            <p>{productError ?? 'This product could not be loaded.'}</p>
+            <h1>Producto no disponible</h1>
+            <p>{productError ?? 'No se pudo cargar este producto.'}</p>
             <button
               type="button"
               className="secondary-button"
               onClick={() => void dispatch(loadProduct(productId))}
             >
-              Try again
+              Volver a intentar
             </button>
           </div>
         </main>
@@ -70,23 +71,34 @@ function ProductScreen() {
 
   const soldOut = product.stock === 0
   const quoteReady = quoteStatus === 'ready' && quote?.quantity === quantity
+  const productName =
+    product.id === CHECKOUT_PRODUCT_ID
+      ? 'Audífonos inalámbricos'
+      : product.name
+  const productDescription =
+    product.id === CHECKOUT_PRODUCT_ID
+      ? 'Audífonos inalámbricos de diadema'
+      : product.description
 
   return (
     <>
       <CheckoutHeader step={1} />
       <main className="checkout-main">
         <div className="product-layout">
-          <section className="product-media" aria-label="Product image">
+          <section className="product-media" aria-label="Imagen del producto">
             {!soldOut && (
               <span className="stock-badge">
-                {product.stock} units available
+                {product.stock}{' '}
+                {product.stock === 1
+                  ? 'unidad disponible'
+                  : 'unidades disponibles'}
               </span>
             )}
             <img
               src="/wireless-headphones.webp"
               width="768"
               height="768"
-              alt="Black over-ear wireless headphones"
+              alt="Audífonos inalámbricos negros de diadema"
               fetchPriority="high"
               decoding="async"
             />
@@ -94,33 +106,33 @@ function ProductScreen() {
 
           <section className="product-card" aria-labelledby="product-title">
             <div className="product-card__intro">
-              <p className="eyebrow">Selected product</p>
-              <h1 id="product-title">{product.name}</h1>
-              <p className="product-description">{product.description}</p>
+              <p className="eyebrow">Producto seleccionado</p>
+              <h1 id="product-title">{productName}</h1>
+              <p className="product-description">{productDescription}</p>
             </div>
 
             <div className="purchase-row">
               <div className="unit-price">
-                <span>Single unit price</span>
+                <span>Precio por unidad</span>
                 <strong>{formatMoney(product.priceCents)}</strong>
               </div>
               <div
                 className="quantity-control"
                 role="group"
-                aria-label="Quantity"
+                aria-label="Cantidad"
               >
                 <button
                   type="button"
-                  aria-label="Decrease quantity"
+                  aria-label="Disminuir cantidad"
                   onClick={() => dispatch(quantityChanged(quantity - 1))}
                   disabled={quantity <= 1 || soldOut}
                 >
                   −
                 </button>
-                <output aria-label="Quantity selected">{quantity}</output>
+                <output aria-label="Cantidad seleccionada">{quantity}</output>
                 <button
                   type="button"
-                  aria-label="Increase quantity"
+                  aria-label="Aumentar cantidad"
                   onClick={() => dispatch(quantityChanged(quantity + 1))}
                   disabled={soldOut || quantity >= product.stock}
                 >
@@ -130,7 +142,7 @@ function ProductScreen() {
             </div>
 
             <div className="calculation" aria-live="polite">
-              <span>Item calculation</span>
+              <span>Cálculo del producto</span>
               <span>
                 {quantity} × {formatMoney(product.priceCents)}
               </span>
@@ -138,12 +150,12 @@ function ProductScreen() {
 
             {soldOut && (
               <p className="inline-message" role="status">
-                Out of stock. Checkout is unavailable.
+                Producto agotado. No puedes continuar con la compra.
               </p>
             )}
             {quoteStatus === 'loading' && (
               <p className="inline-message" role="status">
-                Calculating your order…
+                Calculando tu pedido…
               </p>
             )}
             {quoteStatus === 'error' && (
@@ -154,7 +166,7 @@ function ProductScreen() {
                   className="text-button"
                   onClick={() => void dispatch(loadProduct(productId))}
                 >
-                  Refresh availability
+                  Actualizar disponibilidad
                 </button>
               </div>
             )}
@@ -166,7 +178,7 @@ function ProductScreen() {
         <div className="checkout-footer__inner">
           <div className="subtotal">
             <span>
-              Product subtotal ({quantity} {quantity === 1 ? 'item' : 'items'})
+              Subtotal del producto ({quantity} {quantity === 1 ? 'unidad' : 'unidades'})
             </span>
             <strong>
               {quoteReady ? formatMoney(quote.productAmountCents) : '—'}
@@ -178,7 +190,7 @@ function ProductScreen() {
             onClick={() => dispatch(cardEntryRequested())}
             disabled={soldOut || !quoteReady}
           >
-            Pay with credit card
+            Pagar con tarjeta de crédito
           </button>
         </div>
       </footer>

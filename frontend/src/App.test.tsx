@@ -63,26 +63,40 @@ test('loads one product and an authoritative quote before enabling card entry', 
   const user = userEvent.setup()
   renderCheckout()
 
-  expect(screen.getByRole('status')).toHaveTextContent('Loading product')
+  expect(screen.getByRole('status')).toHaveTextContent('Cargando producto')
   expect(
-    await screen.findByRole('heading', { name: 'Wireless Headphones' }),
+    await screen.findByRole('heading', { name: 'Audífonos inalámbricos' }),
   ).toBeVisible()
-  expect(screen.getByText('2 units available')).toBeVisible()
-  expect(screen.getByText('Over-ear wireless headphones')).toBeVisible()
+  expect(screen.getByText('2 unidades disponibles')).toBeVisible()
+  expect(screen.getByText('Audífonos inalámbricos de diadema')).toBeVisible()
+  expect(
+    screen.getByRole('img', {
+      name: 'Audífonos inalámbricos negros de diadema',
+    }),
+  ).toBeVisible()
+  expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
+  expect(screen.getByText('Paso 1 de 5 · Producto')).toBeVisible()
 
-  const payButton = screen.getByRole('button', { name: 'Pay with credit card' })
+  const payButton = screen.getByRole('button', {
+    name: 'Pagar con tarjeta de crédito',
+  })
   await waitFor(() => expect(payButton).toBeEnabled())
-  expect(screen.getByText('Product subtotal (1 item)')).toBeVisible()
-  expect(screen.getAllByText(/COP\s*129,900/).length).toBeGreaterThan(0)
+  expect(screen.getByText('Subtotal del producto (1 unidad)')).toBeVisible()
+  expect(screen.getAllByText(/COP\s*129\.900/).length).toBeGreaterThan(0)
   expect(
     fetchMock.mock.calls.some(([path]) => path.startsWith('/checkout/quote?')),
   ).toBe(true)
 
   await user.click(payButton)
-  expect(screen.getByRole('heading', { name: 'Card & delivery' })).toHaveFocus()
-  await user.click(screen.getByRole('button', { name: 'Back to product' }))
+  expect(screen.getByRole('heading', { name: 'Tarjeta y entrega' })).toHaveFocus()
   expect(
-    await screen.findByRole('heading', { name: 'Wireless Headphones' }),
+    screen.getByText(
+      'El ingreso de tarjeta y los datos de entrega aún no están disponibles.',
+    ),
+  ).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'Volver al producto' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Audífonos inalámbricos' }),
   ).toBeVisible()
 })
 
@@ -90,36 +104,36 @@ test('re-quotes quantity and never allows more units than current stock', async 
   const fetchMock = installApi()
   const user = userEvent.setup()
   renderCheckout()
-  await screen.findByRole('heading', { name: 'Wireless Headphones' })
+  await screen.findByRole('heading', { name: 'Audífonos inalámbricos' })
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Pay with credit card' }),
+      screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' }),
     ).toBeEnabled(),
   )
 
-  await user.click(screen.getByRole('button', { name: 'Increase quantity' }))
+  await user.click(screen.getByRole('button', { name: 'Aumentar cantidad' }))
   expect(
-    screen.getByRole('status', { name: 'Quantity selected' }),
+    screen.getByRole('status', { name: 'Cantidad seleccionada' }),
   ).toHaveTextContent('2')
   expect(
-    screen.getByRole('button', { name: 'Increase quantity' }),
+    screen.getByRole('button', { name: 'Aumentar cantidad' }),
   ).toBeDisabled()
   await waitFor(() =>
-    expect(screen.getByText('Product subtotal (2 items)')).toBeVisible(),
+    expect(screen.getByText('Subtotal del producto (2 unidades)')).toBeVisible(),
   )
   await waitFor(() =>
-    expect(screen.getAllByText(/COP\s*259,800/).length).toBeGreaterThan(0),
+    expect(screen.getAllByText(/COP\s*259\.800/).length).toBeGreaterThan(0),
   )
   expect(
     fetchMock.mock.calls.some(([path]) => path.includes('quantity=2')),
   ).toBe(true)
 
-  await user.click(screen.getByRole('button', { name: 'Decrease quantity' }))
+  await user.click(screen.getByRole('button', { name: 'Disminuir cantidad' }))
   expect(
-    screen.getByRole('status', { name: 'Quantity selected' }),
+    screen.getByRole('status', { name: 'Cantidad seleccionada' }),
   ).toHaveTextContent('1')
   expect(
-    screen.getByRole('button', { name: 'Decrease quantity' }),
+    screen.getByRole('button', { name: 'Disminuir cantidad' }),
   ).toBeDisabled()
 })
 
@@ -127,12 +141,12 @@ test('does not request a quote or enable checkout for a sold-out product', async
   const fetchMock = installApi(0)
   renderCheckout()
 
-  await screen.findByRole('heading', { name: 'Wireless Headphones' })
+  await screen.findByRole('heading', { name: 'Audífonos inalámbricos' })
   expect(
-    screen.getByText('Out of stock. Checkout is unavailable.'),
+    screen.getByText('Producto agotado. No puedes continuar con la compra.'),
   ).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Pay with credit card' }),
+    screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' }),
   ).toBeDisabled()
   expect(
     fetchMock.mock.calls.every(([path]) => path.startsWith('/products/')),
@@ -146,14 +160,14 @@ test('offers a safe retry after product retrieval fails', async () => {
   renderCheckout()
 
   expect(
-    await screen.findByRole('heading', { name: 'Product unavailable' }),
+    await screen.findByRole('heading', { name: 'Producto no disponible' }),
   ).toBeVisible()
   expect(
-    screen.getByText('We could not load the product. Please try again.'),
+    screen.getByText('No pudimos cargar el producto. Vuelve a intentarlo.'),
   ).toBeVisible()
-  await user.click(screen.getByRole('button', { name: 'Try again' }))
+  await user.click(screen.getByRole('button', { name: 'Volver a intentar' }))
   expect(
-    await screen.findByRole('heading', { name: 'Wireless Headphones' }),
+    await screen.findByRole('heading', { name: 'Audífonos inalámbricos' }),
   ).toBeVisible()
 })
 
@@ -170,13 +184,13 @@ test('blocks progression when the server rejects the quantity', async () => {
 
   expect(
     await screen.findByText(
-      'This quantity is no longer available. Refresh the product to continue.',
+      'Esta cantidad ya no está disponible. Actualiza el producto para continuar.',
     ),
   ).toBeVisible()
   expect(
-    screen.getByRole('button', { name: 'Pay with credit card' }),
+    screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' }),
   ).toBeDisabled()
   expect(
-    screen.getByRole('button', { name: 'Refresh availability' }),
+    screen.getByRole('button', { name: 'Actualizar disponibilidad' }),
   ).toBeVisible()
 })

@@ -1,8 +1,8 @@
 # Frontend checkout
 
-React, TypeScript, Vite, and Redux Toolkit power the mobile-first checkout SPA. **Current scope (F1):** the product screen reads one seeded product and a server-priced quote, lets the buyer choose an in-stock quantity, and shows loading, error, retry, and sold-out states. The price and stock shown come from the API; the browser does not decide payment success.
+React, TypeScript, Vite, and Redux Toolkit power the mobile-first checkout SPA. **Current scope (F1/F1L):** the Spanish (Colombia) product screen reads one seeded product and a server-priced quote, lets the buyer choose an in-stock quantity, and shows loading, error, retry, and sold-out states. The API remains authoritative for price and stock. The display name and description are localized for this one verified product ID; the frontend does not translate arbitrary API products or decide payment success.
 
-The **Card & delivery** screen is a temporary placeholder. Card entry, tokenization, summary, payment submission, final status, and refresh recovery are not implemented in this frontend yet. There is no deployed frontend URL.
+The **Tarjeta y entrega** screen is a temporary placeholder. Card entry, tokenization, summary, payment submission, final status, and refresh recovery are not implemented in this frontend yet. There is no deployed frontend URL.
 
 ## Run locally
 
@@ -31,6 +31,6 @@ npm test -- --runInBand
 npm run test:coverage
 ```
 
-Observed locally on 2026-09-27 after `npm ci`: build and lint passed; Jest passed **3 suites / 11 tests**. F1 coverage reported **92.35% statements, 86.55% branches, 97.61% functions, and 95.13% lines**. The Vite-only API-origin configuration is mocked in Jest and has no direct Jest coverage. These figures describe the current partial frontend, **not** the completed five-step checkout or its final coverage target. Recheck the coverage file scope when the full UI is implemented.
+Observed locally on 2026-09-27: build and lint passed; Jest passed **4 suites / 16 tests**. F1/F1L coverage reported **93.29% statements, 86.04% branches, 97.61% functions, and 95.45% lines**. The Vite-only API-origin configuration is mocked in Jest and has no direct Jest coverage. These figures describe the current partial frontend, **not** the completed five-step checkout or its final coverage target. Recheck the coverage file scope when the full UI is implemented.
 
-The product screen was visually checked in the in-app browser at a desktop width, `375 × 667`, and `320 × 568` CSS pixels; the latter had no horizontal overflow. This is not a cross-browser or physical-device certification.
+The localized F1 product screen was visually checked in the in-app browser at desktop width and in Brave at `375 × 667` and `320 × 568` CSS pixels. At both mobile sizes, the document had no horizontal overflow, the fixed checkout action remained reachable, quantity 1 → 2 updated the server-priced subtotal, and the temporary second step displayed Spanish copy. No relevant browser console errors were observed. These checks used a disposable local product/quote API stub, not the real backend. Both tested browsers use Chromium; this is not cross-engine or physical-device certification.

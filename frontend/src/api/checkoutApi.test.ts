@@ -83,3 +83,13 @@ test('rejects malformed product and HTTP errors without exposing response bodies
     new ApiError(503),
   )
 })
+
+test('rejects a valid product response for a different requested ID', async () => {
+  jest.mocked(fetch).mockResolvedValue(
+    response({ ...product, id: 'another-product' }),
+  )
+
+  await expect(
+    getProduct(CHECKOUT_PRODUCT_ID, new AbortController().signal),
+  ).rejects.toThrow('Invalid product response')
+})

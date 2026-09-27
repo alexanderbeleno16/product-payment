@@ -113,3 +113,66 @@ test('ignores stale product responses instead of overwriting the current request
   )
   expect(state.product?.stock).toBe(2)
 })
+
+test('invalidates an in-flight quote when the product is refreshed', () => {
+  let state = checkoutReducer(
+    undefined,
+    loadProduct.pending('product-1', CHECKOUT_PRODUCT_ID),
+  )
+  state = checkoutReducer(
+    state,
+    loadProduct.fulfilled(product, 'product-1', CHECKOUT_PRODUCT_ID),
+  )
+  state = checkoutReducer(
+    state,
+    loadQuote.pending('quote-1', {
+      productId: CHECKOUT_PRODUCT_ID,
+      quantity: 1,
+    }),
+  )
+  state = checkoutReducer(
+    state,
+    loadProduct.pending('product-2', CHECKOUT_PRODUCT_ID),
+  )
+
+  expect(state.quoteRequestId).toBeNull()
+  expect(state.quoteStatus).toBe('idle')
+  expect(state.quoteError).toBeNull()
+
+  state = checkoutReducer(
+    state,
+    loadQuote.fulfilled(quote, 'quote-1', {
+      productId: CHECKOUT_PRODUCT_ID,
+      quantity: 1,
+    }),
+  )
+  expect(state.quote).toBeNull()
+  expect(state.quoteStatus).toBe('idle')
+})
+
+test('clears an earlier quote error when refreshing the product', () => {
+  let state = checkoutReducer(
+    undefined,
+    loadQuote.pending('quote-1', {
+      productId: CHECKOUT_PRODUCT_ID,
+      quantity: 1,
+    }),
+  )
+  state = checkoutReducer(
+    state,
+    loadQuote.rejected(
+      new Error('unavailable'),
+      'quote-1',
+      { productId: CHECKOUT_PRODUCT_ID, quantity: 1 },
+      'No pudimos calcular tu pedido.',
+    ),
+  )
+  expect(state.quoteError).not.toBeNull()
+
+  state = checkoutReducer(
+    state,
+    loadProduct.pending('product-2', CHECKOUT_PRODUCT_ID),
+  )
+  expect(state.quoteError).toBeNull()
+  expect(state.quoteRequestId).toBeNull()
+})

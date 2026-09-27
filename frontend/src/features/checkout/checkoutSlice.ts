@@ -39,15 +39,15 @@ const initialState: CheckoutState = {
 
 function safeProductError(error: unknown): string {
   if (error instanceof ApiError && error.status === 404)
-    return 'This product is unavailable.'
-  return 'We could not load the product. Please try again.'
+    return 'Este producto no está disponible.'
+  return 'No pudimos cargar el producto. Vuelve a intentarlo.'
 }
 
 function safeQuoteError(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
-    return 'This quantity is no longer available. Refresh the product to continue.'
+    return 'Esta cantidad ya no está disponible. Actualiza el producto para continuar.'
   }
-  return 'We could not calculate your order. Please try again.'
+  return 'No pudimos calcular tu pedido. Vuelve a intentarlo.'
 }
 
 export const loadProduct = createAsyncThunk<
@@ -113,6 +113,10 @@ const checkoutSlice = createSlice({
         state.productStatus = 'loading'
         state.productError = null
         state.productRequestId = action.meta.requestId
+        state.quote = null
+        state.quoteStatus = 'idle'
+        state.quoteError = null
+        state.quoteRequestId = null
       })
       .addCase(loadProduct.fulfilled, (state, action) => {
         if (state.productRequestId !== action.meta.requestId) return
@@ -124,6 +128,8 @@ const checkoutSlice = createSlice({
         }
         state.quote = null
         state.quoteStatus = 'idle'
+        state.quoteError = null
+        state.quoteRequestId = null
       })
       .addCase(loadProduct.rejected, (state, action) => {
         if (state.productRequestId !== action.meta.requestId) return
@@ -134,7 +140,7 @@ const checkoutSlice = createSlice({
         }
         state.productStatus = 'error'
         state.productError =
-          action.payload ?? 'We could not load the product. Please try again.'
+          action.payload ?? 'No pudimos cargar el producto. Vuelve a intentarlo.'
       })
       .addCase(loadQuote.pending, (state, action) => {
         state.quoteStatus = 'loading'
@@ -158,7 +164,7 @@ const checkoutSlice = createSlice({
         state.quoteStatus = 'error'
         state.quoteError =
           action.payload ??
-          'We could not calculate your order. Please try again.'
+          'No pudimos calcular tu pedido. Vuelve a intentarlo.'
       })
   },
 })
