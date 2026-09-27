@@ -1,6 +1,7 @@
 import { FinalizeVerifiedPayment } from './finalize-verified-payment';
 import type { FinalizationResult } from './finalize-verified-payment';
 import type { PaymentStatusReader } from './payment-status-reader.port';
+import type { FinalPaymentStatus } from '../domain/checkout';
 
 export type ReceivePaymentEventResult =
   | FinalizationResult
@@ -14,6 +15,7 @@ export class ReceivePaymentEvent {
 
   async execute(
     providerTransactionId: string,
+    signedTerminalStatus: FinalPaymentStatus | null = null,
   ): Promise<ReceivePaymentEventResult> {
     const authoritative = await this.statusReader.getById(
       providerTransactionId,
@@ -21,6 +23,9 @@ export class ReceivePaymentEvent {
     if (!authoritative) return { ok: false, reason: 'STATUS_UNAVAILABLE' };
     if (authoritative.providerTransactionId !== providerTransactionId) {
       return { ok: false, reason: 'MISMATCH' };
+    }
+    if (signedTerminalStatus && authoritative.status === 'PENDING') {
+      return { ok: false, reason: 'STATUS_UNAVAILABLE' };
     }
     return this.finalize.execute(authoritative);
   }

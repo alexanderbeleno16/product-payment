@@ -155,6 +155,24 @@ describe('Signed payment event HTTP contract (e2e)', () => {
     expect(finalize).toHaveBeenCalledWith(authoritative);
   });
 
+  it('retries a signed terminal event when authoritative lookup still says pending', async () => {
+    getById.mockResolvedValue({ ...authoritative, status: 'PENDING' });
+    await request(app.getHttpServer())
+      .post('/payment/events')
+      .send(signedEvent(['transaction.id', 'transaction.status']))
+      .expect(503);
+    expect(finalize).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .post('/payment/events')
+      .send(signedEvent(['transaction.id']))
+      .expect(200);
+    expect(finalize).toHaveBeenCalledWith({
+      ...authoritative,
+      status: 'PENDING',
+    });
+  });
+
   it('rejects malformed, production, unsigned-ID, duplicate-property and forged events before lookup', async () => {
     const valid = signedEvent();
     await request(app.getHttpServer())
@@ -168,6 +186,11 @@ describe('Signed payment event HTTP contract (e2e)', () => {
     await request(app.getHttpServer())
       .post('/payment/events')
       .send({ ...valid, extra: 'not allowed' })
+      .expect(400);
+    const { signature: _signature, ...withoutSignature } = valid;
+    await request(app.getHttpServer())
+      .post('/payment/events')
+      .send(withoutSignature)
       .expect(400);
     await request(app.getHttpServer())
       .post('/payment/events')
