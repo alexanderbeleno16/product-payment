@@ -132,6 +132,15 @@ describe('checkout application', () => {
     expect(findById).not.toHaveBeenCalled();
   });
 
+  it('reports an unavailable quote product without inventing a price', async () => {
+    findById.mockResolvedValueOnce(null);
+    await expect(
+      new QuoteCheckout(reader).execute(productId, 1),
+    ).resolves.toEqual({ ok: false, reason: 'PRODUCT_NOT_FOUND' });
+    expect(findById).toHaveBeenCalledWith(productId);
+    expect(createPending).not.toHaveBeenCalled();
+  });
+
   it('persists one pending transaction with a canonical business fingerprint', async () => {
     const result = await new StartCheckout(reader, store).execute(input);
     expect(result).toMatchObject({
@@ -208,5 +217,38 @@ describe('checkout application', () => {
       }),
     ).toEqual({ ok: false, reason: 'INVALID_INPUT' });
     expect(createPending).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a PENDING transaction when requested quantity exceeds stock', async () => {
+    expect(
+      await new StartCheckout(reader, store).execute({
+        ...input,
+        quantity: product.stock + 1,
+      }),
+    ).toEqual({ ok: false, reason: 'INSUFFICIENT_STOCK' });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+  });
+
+  it('propagates an unexpected persistence fault instead of treating it as an idempotent replay', async () => {
+    const fault = new Error('Database unavailable');
+    createPending.mockRejectedValueOnce(fault);
+
+    await expect(new StartCheckout(reader, store).execute(input)).rejects.toBe(
+      fault,
+    );
+    expect(findByIdempotencyKey).toHaveBeenCalledTimes(1);
+    expect(claimSubmission).not.toHaveBeenCalled();
+  });
+
+  it('preserves a unique-key failure when the winning transaction cannot be read', async () => {
+    const fault = new IdempotencyKeyTaken();
+    createPending.mockRejectedValueOnce(fault);
+
+    await expect(new StartCheckout(reader, store).execute(input)).rejects.toBe(
+      fault,
+    );
+    expect(findByIdempotencyKey).toHaveBeenCalledTimes(2);
+    expect(claimSubmission).not.toHaveBeenCalled();
   });
 });
