@@ -286,8 +286,9 @@ test('shows ten server products with optimized loading priorities and opens a ne
   expect(screen.getAllByRole('article')).toHaveLength(10)
 })
 
-test('sorts a copy of the catalog by descending price and restores server order', async () => {
-  installApi([headphones, speaker, ...additionalProducts])
+test('sorts a copy by both price directions and restores original server order', async () => {
+  const products = [headphones, speaker, ...additionalProducts]
+  installApi(products)
   const user = userEvent.setup()
   renderCheckout()
 
@@ -300,6 +301,7 @@ test('sorts a copy of the catalog by descending price and restores server order'
   await user.click(sortTrigger)
   const sortOptions = screen.getByRole('group', { name: 'Opciones de orden' })
   expect(within(sortOptions).getByRole('button', { name: 'Orden predeterminado' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(sortOptions).getByRole('button', { name: 'Precio: menor a mayor' })).toHaveAttribute('aria-pressed', 'false')
   await user.click(within(sortOptions).getByRole('button', { name: 'Precio: mayor a menor' }))
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
   expect(sortTrigger).toHaveFocus()
@@ -309,8 +311,18 @@ test('sorts a copy of the catalog by descending price and restores server order'
   expect(screen.getAllByRole('article')[9]).toHaveTextContent('Soporte plegable para teléfono gris')
 
   await user.click(sortTrigger)
+  const ascending = within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: menor a mayor' })
+  expect(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: mayor a menor' })).toHaveAttribute('aria-pressed', 'true')
+  await user.click(ascending)
+  expect(sortTrigger).toHaveAccessibleDescription('Precio: menor a mayor')
+  expect(sortTrigger).toHaveFocus()
+  expect(firstCard()).toHaveTextContent('Soporte plegable para teléfono gris')
+  expect(screen.getAllByRole('article')[9]).toHaveTextContent('Teclado mecánico compacto gris oscuro')
+  await user.click(sortTrigger)
+  expect(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: menor a mayor' })).toHaveAttribute('aria-pressed', 'true')
   await user.click(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Orden predeterminado' }))
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
+  expect(products[0]).toBe(headphones)
 })
 
 test('closes the sort choices on Escape or outside click without losing keyboard focus', async () => {
@@ -338,6 +350,8 @@ test('closes the sort choices on Escape or outside click without losing keyboard
   expect(screen.getByRole('button', { name: 'Orden predeterminado' })).toHaveFocus()
   await user.tab()
   expect(screen.getByRole('button', { name: 'Precio: mayor a menor' })).toHaveFocus()
+  await user.tab()
+  expect(screen.getByRole('button', { name: 'Precio: menor a mayor' })).toHaveFocus()
   await user.tab()
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
 })
