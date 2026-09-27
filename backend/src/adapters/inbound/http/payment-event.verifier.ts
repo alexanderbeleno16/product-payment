@@ -1,15 +1,22 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { FinalPaymentStatus } from '../../../domain/checkout';
 import type { PaymentEventDto } from './payment-event.dto';
 
 type VerificationResult =
-  | { readonly ok: true; readonly providerTransactionId: string }
+  | {
+      readonly ok: true;
+      readonly providerTransactionId: string;
+      readonly signedTerminalStatus: FinalPaymentStatus | null;
+    }
   | { readonly ok: false };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isPaymentStatus(value: unknown): boolean {
+function isPaymentStatus(
+  value: unknown,
+): value is FinalPaymentStatus | 'PENDING' {
   return (
     value === 'PENDING' ||
     value === 'APPROVED' ||
@@ -86,6 +93,11 @@ export class PaymentEventVerifier {
       const header = Buffer.from(headerChecksum, 'hex');
       if (!timingSafeEqual(header, supplied)) return { ok: false };
     }
-    return { ok: true, providerTransactionId: id };
+    const signedTerminalStatus =
+      event.signature.properties.includes('transaction.status') &&
+      status !== 'PENDING'
+        ? status
+        : null;
+    return { ok: true, providerTransactionId: id, signedTerminalStatus };
   }
 }

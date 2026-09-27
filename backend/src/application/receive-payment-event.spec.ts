@@ -58,4 +58,18 @@ describe('ReceivePaymentEvent', () => {
     ).resolves.toEqual({ ok: false, reason: 'MISMATCH' });
     expect(finalize).not.toHaveBeenCalled();
   });
+
+  it('requests retry when a signed terminal event races a still-pending authoritative GET', async () => {
+    getById.mockResolvedValue({ ...authoritative, status: 'PENDING' });
+    await expect(
+      useCase.execute(authoritative.providerTransactionId, 'APPROVED'),
+    ).resolves.toEqual({ ok: false, reason: 'STATUS_UNAVAILABLE' });
+    expect(finalize).not.toHaveBeenCalled();
+
+    await useCase.execute(authoritative.providerTransactionId);
+    expect(finalize).toHaveBeenCalledWith({
+      ...authoritative,
+      status: 'PENDING',
+    });
+  });
 });
