@@ -5,7 +5,12 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import type { ProductReader } from '../src/application/product-reader.port';
 import { PRODUCT_READER } from '../src/products.module';
-import { CONSENT_TERMS_READER, PAYMENT_GATEWAY } from '../src/checkout.tokens';
+import {
+  CONSENT_TERMS_READER,
+  PAYMENT_GATEWAY,
+  PAYMENT_STATUS_READER,
+} from '../src/checkout.tokens';
+import { PaymentEventVerifier } from '../src/adapters/inbound/http/payment-event.verifier';
 
 const product = {
   id: '8a52ea31-08d9-4f52-a604-00e56143dce0',
@@ -32,6 +37,10 @@ describe('ProductsController (e2e)', () => {
       .useValue({ getCurrent: jest.fn() })
       .overrideProvider(PAYMENT_GATEWAY)
       .useValue({ submit: jest.fn() })
+      .overrideProvider(PAYMENT_STATUS_READER)
+      .useValue({ getById: jest.fn() })
+      .overrideProvider(PaymentEventVerifier)
+      .useValue(new PaymentEventVerifier('test_events_fixture_only'))
       .compile();
 
     app = moduleFixture.createNestApplication();

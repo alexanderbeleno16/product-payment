@@ -2,6 +2,11 @@ import { Test } from '@nestjs/testing';
 import { CheckoutController } from './adapters/inbound/http/checkout.controller';
 import { SandboxConsentTermsReader } from './adapters/outbound/payment/sandbox-consent-terms.reader';
 import { SandboxPaymentGateway } from './adapters/outbound/payment/sandbox-payment.gateway';
+import { SandboxPaymentStatusReader } from './adapters/outbound/payment/sandbox-payment-status.reader';
+import { PaymentEventController } from './adapters/inbound/http/payment-event.controller';
+import { PaymentEventVerifier } from './adapters/inbound/http/payment-event.verifier';
+import { ReceivePaymentEvent } from './application/receive-payment-event';
+import { FinalizeVerifiedPayment } from './application/finalize-verified-payment';
 import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
 import { TypeOrmCheckoutStore } from './adapters/outbound/persistence/typeorm-checkout.store';
 import { GetTransactionStatus } from './application/get-transaction-status';
@@ -10,7 +15,11 @@ import { QuoteCheckout } from './application/quote-checkout';
 import { StartCheckout } from './application/start-checkout';
 import { AppModule } from './app.module';
 import { CHECKOUT_STORE } from './checkout.module';
-import { CONSENT_TERMS_READER, PAYMENT_GATEWAY } from './checkout.tokens';
+import {
+  CONSENT_TERMS_READER,
+  PAYMENT_GATEWAY,
+  PAYMENT_STATUS_READER,
+} from './checkout.tokens';
 
 const fakeConfiguration = {
   PAYMENT_API_BASE_URL: 'https://sandbox.invalid/v1',
@@ -18,6 +27,7 @@ const fakeConfiguration = {
   PAYMENT_PRIVATE_KEY: 'prv_test_unit_fixture',
   PAYMENT_INTEGRITY_SECRET: 'test_integrity_unit_fixture',
   PAYMENT_PUBLIC_KEY: 'pub_test_unit_fixture',
+  PAYMENT_EVENTS_SECRET: 'test_events_unit_fixture',
 };
 
 describe('Nest checkout composition', () => {
@@ -46,6 +56,21 @@ describe('Nest checkout composition', () => {
         expect(moduleRef.get(InitiatePayment)).toBeInstanceOf(InitiatePayment);
         expect(moduleRef.get(GetTransactionStatus)).toBeInstanceOf(
           GetTransactionStatus,
+        );
+        expect(moduleRef.get(PaymentEventController)).toBeInstanceOf(
+          PaymentEventController,
+        );
+        expect(moduleRef.get(PaymentEventVerifier)).toBeInstanceOf(
+          PaymentEventVerifier,
+        );
+        expect(moduleRef.get(ReceivePaymentEvent)).toBeInstanceOf(
+          ReceivePaymentEvent,
+        );
+        expect(moduleRef.get(FinalizeVerifiedPayment)).toBeInstanceOf(
+          FinalizeVerifiedPayment,
+        );
+        expect(moduleRef.get(PAYMENT_STATUS_READER)).toBeInstanceOf(
+          SandboxPaymentStatusReader,
         );
         expect(moduleRef.get(CHECKOUT_STORE)).toBeInstanceOf(
           TypeOrmCheckoutStore,
