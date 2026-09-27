@@ -43,6 +43,8 @@ The API listens at `http://localhost:3000` by default (`PORT` may override it). 
 | `PAYMENT_INTEGRITY_SECRET` | Server-only sandbox integrity secret for amount/reference signing. |
 | `PAYMENT_EVENTS_SECRET` | Separate server-only sandbox events secret for signed callback verification; it is not the private key or integrity secret. |
 
+If `GET /checkout/consents` returns the safe public 503, backend logs emit only a redacted category: `auth`, `timeout`, `invalid_response`, `network`, or `unexpected` for unclassified internal faults. Operators can use that category to narrow configuration or connectivity checks; it does not reveal provider response bodies, keys, tokens, or card data, and it does not establish the cause of any earlier 503.
+
 Wait for PostgreSQL to accept connections before running the migration. Migrations are explicit—runtime synchronization and automatic migration execution are disabled. The seed may be run again: fixed product IDs prevent duplicates and existing stock is not reset.
 
 To stop and remove the disposable database:
