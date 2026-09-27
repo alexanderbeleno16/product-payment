@@ -160,8 +160,22 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
 
     it('applies signed approval once across HTTP, authoritative lookup, and PostgreSQL', async () => {
       const { transaction, snapshot } = await createCheckout('APPROVED');
+      getById.mockResolvedValueOnce({ ...snapshot, status: 'PENDING' });
       getById.mockResolvedValue(snapshot);
       const event = signedEvent(snapshot);
+      await request(app.getHttpServer())
+        .post('/payment/events')
+        .send(event)
+        .expect(503);
+      expect(
+        (
+          await dataSource
+            .getRepository(ProductEntity)
+            .findOneByOrFail({ id: productId })
+        ).stock,
+      ).toBe(3);
+      expect(await dataSource.getRepository(DeliveryEntity).count()).toBe(0);
+
       await request(app.getHttpServer())
         .post('/payment/events')
         .send(event)

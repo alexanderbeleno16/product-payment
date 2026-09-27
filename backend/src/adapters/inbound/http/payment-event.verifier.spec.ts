@@ -50,6 +50,15 @@ describe('PaymentEventVerifier', () => {
     ).toEqual({
       ok: true,
       providerTransactionId: transaction.id,
+      signedTerminalStatus: 'APPROVED',
+    });
+  });
+
+  it('does not treat an unsigned status as a retry hint', () => {
+    expect(verifier.verify(event(['transaction.id']))).toEqual({
+      ok: true,
+      providerTransactionId: transaction.id,
+      signedTerminalStatus: null,
     });
   });
 

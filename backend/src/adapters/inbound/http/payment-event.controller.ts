@@ -55,6 +55,7 @@ export class PaymentEventController {
 
     const result = await this.receivePaymentEvent.execute(
       signed.providerTransactionId,
+      signed.signedTerminalStatus,
     );
     if (result.ok) return { accepted: true };
     switch (result.reason) {
