@@ -51,6 +51,18 @@ test('accepts a valid form but rejects invalid number, expiry, CVC, and separate
   expect(errors.dataAccepted).toBeDefined()
 })
 
+test('attributes malformed month, stale year, and invalid domains to their own fields', () => {
+  const today = new Date(2026, 8, 1)
+  expect(validateCardForm({ ...valid, expMonth: '31' }, today).expMonth).toMatch(/mes válido/)
+  expect(validateCardForm({ ...valid, expMonth: '31' }, today).expYear).toBeUndefined()
+  expect(validateCardForm({ ...valid, expYear: '10' }, today).expYear).toMatch(/año de vencimiento/)
+  expect(validateCardForm({ ...valid, expYear: '10' }, today).expMonth).toBeUndefined()
+  for (const customerEmail of ['asdasd@asdasd', 'persona@-.com', 'persona@example..com']) {
+    expect(validateCardForm({ ...valid, customerEmail }, today).customerEmail).toBeDefined()
+  }
+  expect(validateCardForm({ ...valid, number: `${valid.number}x` }, today).number).toBeDefined()
+})
+
 test('shows only the first eight digits and masks the rest', () => {
   const preview = maskedCardPreview(valid.number)
   expect(preview).toContain(valid.number.slice(0, 8).replace(/(.{4})/g, '$1 ').trim())
