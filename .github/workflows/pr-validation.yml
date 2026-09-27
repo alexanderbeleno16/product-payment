@@ -2,7 +2,7 @@ name: PR validation
 
 on:
   pull_request:
-    branches: [develop, 'feat/backend-payment-*', 'feat/backend-quality-*']
+    branches: [develop, 'feat/*']
     types: [opened, reopened, edited, synchronize, labeled, unlabeled]
 
 permissions: {}
@@ -86,6 +86,9 @@ jobs:
         working-directory: frontend
       - name: Lint
         run: npm run lint
+        working-directory: frontend
+      - name: Frontend Jest coverage
+        run: npm run test:coverage --if-present
         working-directory: frontend
 
   backend-checks:
