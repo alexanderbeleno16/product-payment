@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ProductGallery from './ProductGallery'
 import { HEADPHONES_PRODUCT_ID, SPEAKER_PRODUCT_ID } from './productImages'
@@ -57,6 +57,85 @@ test('slides between both cached headphone views without changing checkout state
   expect(pagination?.parentElement?.querySelector('.visually-hidden')).toHaveTextContent('Foto 2 de 2')
   await user.click(screen.getByRole('button', { name: 'Imagen anterior' }))
   expect(screen.getByRole('img', { name: 'Audífonos inalámbricos negros de diadema' })).toBeVisible()
+})
+
+test('previews a thumbnail on mouse hover and keyboard focus while preserving fullscreen click', async () => {
+  const user = userEvent.setup()
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  const main = screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  })
+  const first = screen.getByRole('button', {
+    name: 'Abrir foto 1 de Audífonos inalámbricos en pantalla completa',
+  })
+  const second = screen.getByRole('button', {
+    name: 'Abrir foto 2 de Audífonos inalámbricos en pantalla completa',
+  })
+
+  fireEvent.pointerEnter(second, { pointerType: 'mouse' })
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones-side.webp')
+  expect(second).toHaveAttribute('aria-current', 'true')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  act(() => first.focus())
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones.webp')
+  expect(first).toHaveAttribute('aria-current', 'true')
+
+  await user.click(second)
+  expect(within(screen.getByRole('dialog')).getByRole('img')).toHaveAttribute('src', '/wireless-headphones-side.webp')
+})
+
+test('touching a thumbnail does not switch the large preview before activation', () => {
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  const main = screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  })
+  const second = screen.getByRole('button', {
+    name: 'Abrir foto 2 de Audífonos inalámbricos en pantalla completa',
+  })
+
+  fireEvent.pointerEnter(second, { pointerType: 'touch' })
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones.webp')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('tracks mouse position for hover zoom without reacting to touch movement', () => {
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  const gallery = screen.getByRole('region', { name: 'Imágenes del producto' })
+  const main = screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  })
+  Object.defineProperty(main, 'getBoundingClientRect', {
+    value: () => ({ left: 10, top: 20, width: 200, height: 200 }),
+  })
+
+  fireEvent.pointerEnter(main, { pointerType: 'mouse', clientX: 60, clientY: 170 })
+  expect(gallery).toHaveAttribute('data-zoom-active', 'true')
+  expect(gallery.style.getPropertyValue('--zoom-x')).toBe('25%')
+  expect(gallery.style.getPropertyValue('--zoom-y')).toBe('75%')
+  expect(gallery.querySelector('.gallery-zoom-pane')).toHaveAttribute('aria-hidden', 'true')
+  expect(gallery.querySelector('.gallery-zoom-pane')).toHaveStyle({ backgroundImage: 'url("/wireless-headphones.webp")' })
+
+  fireEvent.pointerMove(main, { pointerType: 'mouse', clientX: 250, clientY: 0 })
+  expect(gallery.style.getPropertyValue('--zoom-x')).toBe('100%')
+  expect(gallery.style.getPropertyValue('--zoom-y')).toBe('0%')
+
+  fireEvent.pointerDown(main, { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, clientX: 250, clientY: 0 })
+  expect(gallery).not.toHaveAttribute('data-zoom-active')
+  fireEvent.pointerMove(main, { pointerType: 'mouse', buttons: 1, clientX: 30, clientY: 30 })
+  expect(gallery.style.getPropertyValue('--zoom-x')).toBe('100%')
+  expect(gallery).not.toHaveAttribute('data-zoom-active')
+  fireEvent.pointerUp(main, { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 0, clientX: 250, clientY: 0 })
+  fireEvent.pointerMove(main, { pointerType: 'mouse', buttons: 0, clientX: 110, clientY: 120 })
+  expect(gallery).toHaveAttribute('data-zoom-active', 'true')
+  expect(gallery.style.getPropertyValue('--zoom-x')).toBe('50%')
+  expect(gallery.style.getPropertyValue('--zoom-y')).toBe('50%')
+  fireEvent.pointerLeave(main, { pointerType: 'mouse' })
+  expect(gallery).not.toHaveAttribute('data-zoom-active')
+
+  fireEvent.pointerEnter(main, { pointerType: 'touch', clientX: 80, clientY: 80 })
+  fireEvent.pointerMove(main, { pointerType: 'touch', clientX: 90, clientY: 90 })
+  expect(gallery).not.toHaveAttribute('data-zoom-active')
 })
 
 test.each(['touch', 'mouse'])('%s horizontal swipe changes the image without opening fullscreen', (pointerType) => {
