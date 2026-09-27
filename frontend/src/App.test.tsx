@@ -178,7 +178,7 @@ test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on
   await user.type(screen.getByLabelText('Nombre en la tarjeta'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Mes de vencimiento (MM)'), '12')
   await user.type(screen.getByLabelText('Año de vencimiento (AA)'), '28')
-  await user.type(screen.getByLabelText('Código de seguridad'), '123')
+  await user.type(screen.getByLabelText('Código de seguridad (CVC)'), '123')
   await user.type(screen.getByLabelText('Correo electrónico'), 'test@example.test')
   await user.type(screen.getByLabelText('Nombre de quien recibe'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Dirección de entrega'), 'Calle de Prueba 123')
