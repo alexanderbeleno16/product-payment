@@ -14,6 +14,12 @@ export interface CheckoutStore {
   createPending(command: NewPendingCheckout): Promise<CheckoutTransaction>;
   /** One durable claim per transaction; false means another request already claimed it. */
   claimSubmission(reference: string): Promise<boolean>;
+  recordSubmissionOutcome(
+    reference: string,
+    outcome:
+      | { readonly kind: 'ACCEPTED'; readonly providerTransactionId: string }
+      | { readonly kind: 'REJECTED' | 'UNKNOWN' },
+  ): Promise<CheckoutTransaction>;
 }
 
 /** Persistence adapter raises this only for a duplicate idempotency key. */

@@ -4,6 +4,7 @@ import type {
   CheckoutStore,
   NewPendingCheckout,
 } from '../../../application/checkout-store.port';
+import type { PaymentSubmissionOutcome } from '../../../application/payment-gateway.port';
 import { IdempotencyKeyTaken } from '../../../application/checkout-store.port';
 import type { CheckoutTransaction } from '../../../application/checkout';
 import { CustomerEntity } from './customer.entity';
@@ -98,7 +99,10 @@ export class TypeOrmCheckoutStore implements CheckoutStore {
     const result = await dataSource
       .createQueryBuilder()
       .update(TransactionEntity)
-      .set({ submissionStartedAt: new Date() })
+      .set({
+        submissionStartedAt: new Date(),
+        status: 'SUBMISSION_UNKNOWN',
+      })
       .where(
         'reference = :reference AND submission_started_at IS NULL AND status = :status',
         {
@@ -108,5 +112,39 @@ export class TypeOrmCheckoutStore implements CheckoutStore {
       )
       .execute();
     return result.affected === 1;
+  }
+
+  async recordSubmissionOutcome(
+    reference: string,
+    outcome: PaymentSubmissionOutcome,
+  ): Promise<CheckoutTransaction> {
+    const dataSource = await this.connection.get();
+    const status =
+      outcome.kind === 'UNKNOWN'
+        ? 'SUBMISSION_UNKNOWN'
+        : outcome.kind === 'REJECTED'
+          ? 'SUBMISSION_REJECTED'
+          : 'PENDING';
+    const result = await dataSource
+      .createQueryBuilder()
+      .update(TransactionEntity)
+      .set({
+        status,
+        providerTransactionId:
+          outcome.kind === 'ACCEPTED' ? outcome.providerTransactionId : null,
+      })
+      .where(
+        'reference = :reference AND status = :unknown AND submission_started_at IS NOT NULL AND provider_transaction_id IS NULL',
+        { reference, unknown: 'SUBMISSION_UNKNOWN' },
+      )
+      .execute();
+    if (result.affected !== 1) {
+      throw new Error('Submission outcome could not be recorded');
+    }
+    const entity = await dataSource.getRepository(TransactionEntity).findOneBy({
+      reference,
+    });
+    if (!entity) throw new Error('Recorded checkout disappeared');
+    return toCheckout(entity);
   }
 }
