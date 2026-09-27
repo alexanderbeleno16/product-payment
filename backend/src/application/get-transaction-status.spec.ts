@@ -32,6 +32,7 @@ describe('GetTransactionStatus', () => {
   const recordSubmissionOutcome = jest.fn();
   const store: CheckoutStore = {
     findByIdempotencyKey,
+    findByReference: jest.fn(),
     createPending,
     claimSubmission,
     recordSubmissionOutcome,
@@ -43,10 +44,14 @@ describe('GetTransactionStatus', () => {
     findByIdempotencyKey.mockResolvedValue(transaction);
   });
 
-  it('returns only the reference and status for the matching key and reference', async () => {
+  it('returns only payment and fulfillment state for the matching key and reference', async () => {
     await expect(useCase.execute(reference, idempotencyKey)).resolves.toEqual({
       ok: true,
-      value: { reference, status: 'SUBMISSION_UNKNOWN' },
+      value: {
+        reference,
+        paymentStatus: 'SUBMISSION_UNKNOWN',
+        fulfillmentStatus: 'NOT_STARTED',
+      },
     });
     expect(findByIdempotencyKey).toHaveBeenCalledWith(idempotencyKey);
     expect(createPending).not.toHaveBeenCalled();

@@ -47,6 +47,7 @@ describe('checkout application', () => {
   const reader: ProductReader = { findById };
   const store: CheckoutStore = {
     findByIdempotencyKey,
+    findByReference: jest.fn(),
     createPending,
     claimSubmission,
     recordSubmissionOutcome,

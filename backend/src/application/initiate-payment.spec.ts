@@ -43,6 +43,7 @@ describe('InitiatePayment', () => {
   const products: ProductReader = { findById };
   const store: CheckoutStore = {
     findByIdempotencyKey,
+    findByReference: jest.fn(),
     createPending,
     claimSubmission,
     recordSubmissionOutcome,

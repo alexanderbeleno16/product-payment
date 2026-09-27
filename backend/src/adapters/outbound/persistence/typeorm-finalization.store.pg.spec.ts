@@ -5,6 +5,9 @@ import type {
   CheckoutTransaction,
 } from '../../../application/checkout';
 import type { VerifiedPaymentSnapshot } from '../../../application/finalize-verified-payment';
+import { FinalizeVerifiedPayment } from '../../../application/finalize-verified-payment';
+import { ReceivePaymentEvent } from '../../../application/receive-payment-event';
+import { ReconcileKnownPayment } from '../../../application/reconcile-known-payment';
 import { StartCheckout } from '../../../application/start-checkout';
 import type { DatabaseConnection } from './database-connection';
 import { createDataSource } from './data-source';
@@ -139,6 +142,33 @@ const productId = '9bf29f21-5931-45a9-a3fc-67a9728787b3';
         value: { applied: false },
       });
       expect(await stock()).toBe(2);
+      expect(await dataSource.getRepository(DeliveryEntity).count()).toBe(1);
+    });
+
+    it('reconciles a known bound ID through the guarded path without duplicate effects', async () => {
+      const transaction = await createCheckout(1);
+      await checkout.claimSubmission(transaction.reference);
+      const confirmed = snapshot(transaction);
+      await checkout.recordSubmissionOutcome(transaction.reference, {
+        kind: 'ACCEPTED',
+        providerTransactionId: confirmed.providerTransactionId,
+      });
+      const getById = jest.fn().mockResolvedValue(confirmed);
+      const reconcile = new ReconcileKnownPayment(
+        checkout,
+        new ReceivePaymentEvent(
+          { getById },
+          new FinalizeVerifiedPayment(finalization),
+        ),
+      );
+      await expect(
+        reconcile.execute(transaction.reference),
+      ).resolves.toMatchObject({ ok: true, value: { applied: true } });
+      await expect(
+        reconcile.execute(transaction.reference),
+      ).resolves.toMatchObject({ ok: true, value: { applied: false } });
+      expect(getById).toHaveBeenCalledTimes(2);
+      expect(await stock()).toBe(3);
       expect(await dataSource.getRepository(DeliveryEntity).count()).toBe(1);
     });
 

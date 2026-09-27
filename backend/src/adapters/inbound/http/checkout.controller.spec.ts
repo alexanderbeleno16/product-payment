@@ -177,7 +177,11 @@ describe('CheckoutController HTTP mapping', () => {
     const { controller, getTransactionStatus } = controllerWithFakes();
     getTransactionStatus.execute.mockResolvedValue({
       ok: true,
-      value: { reference, status: 'SUBMISSION_UNKNOWN' },
+      value: {
+        reference,
+        paymentStatus: 'SUBMISSION_UNKNOWN',
+        fulfillmentStatus: 'NOT_STARTED',
+      },
     });
 
     await expect(
@@ -187,7 +191,8 @@ describe('CheckoutController HTTP mapping', () => {
       ),
     ).resolves.toEqual({
       reference,
-      status: 'SUBMISSION_UNKNOWN',
+      paymentStatus: 'SUBMISSION_UNKNOWN',
+      fulfillmentStatus: 'NOT_STARTED',
     });
     expect(getTransactionStatus.execute).toHaveBeenCalledWith(
       reference,

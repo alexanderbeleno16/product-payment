@@ -6,6 +6,7 @@ const paymentStatuses = [
   'SUBMISSION_REJECTED',
   'APPROVED',
   'DECLINED',
+  'VOIDED',
   'ERROR',
 ] as const;
 
@@ -73,7 +74,10 @@ export class TransactionStatusResponseDto {
   reference!: string;
 
   @ApiProperty({ enum: paymentStatuses })
-  status!: string;
+  paymentStatus!: string;
+
+  @ApiProperty({ enum: ['NOT_STARTED', 'CREATED', 'STOCK_UNAVAILABLE'] })
+  fulfillmentStatus!: string;
 }
 
 export class ProductResponseDto {

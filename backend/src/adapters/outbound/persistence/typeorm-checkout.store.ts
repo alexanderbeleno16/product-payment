@@ -46,6 +46,16 @@ export class TypeOrmCheckoutStore implements CheckoutStore {
     return entity ? toCheckout(entity) : null;
   }
 
+  async findByReference(
+    reference: string,
+  ): Promise<CheckoutTransaction | null> {
+    const dataSource = await this.connection.get();
+    const entity = await dataSource.getRepository(TransactionEntity).findOneBy({
+      reference,
+    });
+    return entity ? toCheckout(entity) : null;
+  }
+
   async createPending(
     command: NewPendingCheckout,
   ): Promise<CheckoutTransaction> {
