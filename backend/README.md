@@ -56,11 +56,12 @@ docker rm -v product-payment-postgres
 
 ## Implemented API
 
-`GET /products/:id` reads one product, including current stock. It does not change stock or create a checkout. The route is currently unauthenticated; do not treat it as a transaction-status or buyer-data endpoint.
+`GET /products` lists all available product records with current stock; `GET /products/:id` reads one. Neither route changes stock or creates a checkout. Both routes are currently unauthenticated; do not treat them as transaction-status or buyer-data endpoints.
 
-The seeded IDs are `8a52ea31-08d9-4f52-a604-00e56143dce0` and `3685f095-a601-4ca6-ab54-0f8eb66bccd8`. For example:
+The explicit seed adds ten deterministic demo products on a fresh database, including `8a52ea31-08d9-4f52-a604-00e56143dce0` and `3685f095-a601-4ca6-ab54-0f8eb66bccd8`. Existing rows are not reset when the seed is rerun. After updating an existing installation, rerun `npm run db:seed` to insert the eight new products. For example:
 
 ```bash
+curl -i http://localhost:3000/products
 curl -i http://localhost:3000/products/8a52ea31-08d9-4f52-a604-00e56143dce0
 ```
 
@@ -69,8 +70,8 @@ Successful response (`200 OK`):
 ```json
 {
   "id": "8a52ea31-08d9-4f52-a604-00e56143dce0",
-  "name": "Wireless Headphones",
-  "description": "Over-ear wireless headphones",
+  "name": "Audífonos inalámbricos",
+  "description": "Audífonos inalámbricos de diadema en color negro, con copas que rodean las orejas y un diseño sobrio para el uso diario. Pensados para escuchar música, pódcast y otros contenidos de audio sin depender de un cable.",
   "currency": "COP",
   "priceCents": 12990000,
   "stock": 12
@@ -116,7 +117,7 @@ Supply the real local reference without angle brackets. The command looks up exa
 
 ## Data and architecture
 
-The first migration creates `products`: UUID primary key, name, description, three-letter uppercase currency, positive integer `price_cents`, and nonnegative integer stock. Two deterministic dummy products are inserted by the explicit seed command. A second versioned migration adds `customers` and `transactions`. The latter stores a PENDING status, unique transaction reference and idempotency key, canonical request fingerprint, quantity, product/fee/total snapshot in integer COP cents, and nullable provider-submission timestamp and provider transaction ID. A third migration adds `fulfillment_status` and `deliveries` with a unique transaction ID. Customer email and delivery details are stored with the checkout; no delivery record exists before confirmed success.
+The first migration creates `products`: UUID primary key, name, description, three-letter uppercase currency, positive integer `price_cents`, and nonnegative integer stock. Ten deterministic demo products are inserted by the explicit seed command. A second versioned migration adds `customers` and `transactions`. The latter stores a PENDING status, unique transaction reference and idempotency key, canonical request fingerprint, quantity, product/fee/total snapshot in integer COP cents, and nullable provider-submission timestamp and provider transaction ID. A third migration adds `fulfillment_status` and `deliveries` with a unique transaction ID. Customer email and delivery details are stored with the checkout; no delivery record exists before confirmed success.
 
 The internal `FinalizeVerifiedPayment` input accepts an **already verified, authoritative** transaction snapshot; it is not an HTTP payload parser and must not be called with untrusted event JSON. The HTTP adapter checks event shape and test environment, computes SHA256 from the event's ordered dynamic signature fields plus timestamp and the separate events secret, and requires the transaction ID among signed properties. A valid event is only a trigger: the application reads the current transaction by ID from the configured sandbox API with a bounded private-key GET. If a **signed** terminal status arrives while the authoritative read still says `PENDING`, the endpoint returns retryable `503` without finalization; an unsigned status is not trusted as a retry hint. Pure application-core finalization policy decides reference, provider ID, amount, and currency binding; monotonic payment-state transitions; and approval/fulfillment outcomes from the locked local facts. The TypeORM adapter locks the row and executes the conditional stock update and unique delivery insert in the same PostgreSQL transaction. When stock is insufficient, it records `APPROVED` with `STOCK_UNAVAILABLE` and no delivery; this is not a payment failure. Pending and rejected results leave stock and deliveries unchanged. A late or duplicate outcome cannot repeat fulfillment. A provider outage or database failure produces non-`200` so the event can be retried; the operator-only known-ID reconciliation command is available; it does not automatically scan unresolved attempts.
 

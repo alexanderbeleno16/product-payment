@@ -10,6 +10,8 @@ import { TypeOrmProductReader } from './typeorm-product.reader';
 const testDatabaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
 const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
 const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
+const backpackId = '9b135df6-299a-43c1-a33f-6f3a0fc9281a';
+const standId = '14746114-cb12-446c-8386-3c7bce2bd966';
 
 (testDatabaseUrl ? describe : describe.skip)(
   'database setup commands with PostgreSQL',
@@ -130,14 +132,32 @@ const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
       const stockChange = isolatedDataSource();
       await stockChange.initialize();
       try {
-        expect(await stockChange.getRepository(ProductEntity).count()).toBe(2);
+        expect(await stockChange.getRepository(ProductEntity).count()).toBe(10);
         const reader = new TypeOrmProductReader({
           get: async () => stockChange,
         } as unknown as DatabaseConnection);
-        expect((await reader.findAll()).map((item) => item.name)).toEqual([
-          'Audífonos inalámbricos',
-          'Parlante portátil',
-        ]);
+        const catalog = await reader.findAll();
+        expect(catalog).toHaveLength(10);
+        expect(new Set(catalog.map((item) => item.id)).size).toBe(10);
+        expect(catalog.map((item) => item.name)).toEqual(
+          expect.arrayContaining([
+            'Audífonos inalámbricos',
+            'Parlante portátil',
+            'Mochila urbana negra',
+            'Billetera compacta de cuero marrón',
+            'Termo de viaje de acero oscuro',
+            'Ratón inalámbrico gris grafito',
+            'Lámpara de escritorio LED negra',
+            'Teclado mecánico compacto gris oscuro',
+            'Batería externa portátil negra',
+            'Soporte plegable para teléfono gris',
+          ]),
+        );
+        expect(await reader.findById(standId)).toMatchObject({
+          name: 'Soporte plegable para teléfono gris',
+          priceCents: 3_990_000,
+          stock: 24,
+        });
         expect(
           await stockChange.getRepository(ProductEntity).findOneByOrFail({
             id: headphonesId,
@@ -159,6 +179,10 @@ const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
         await stockChange.getRepository(ProductEntity).update(headphonesId, {
           stock: 3,
         });
+        await stockChange.getRepository(ProductEntity).update(backpackId, {
+          priceCents: 15_000_000,
+          stock: 4,
+        });
         await stockChange.getRepository(ProductEntity).update(speakerId, {
           name: 'Portable Speaker',
           description: 'Descripción personalizada por el operador',
@@ -171,12 +195,17 @@ const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
       const rollback = isolatedDataSource();
       await rollback.initialize();
       try {
-        expect(await rollback.getRepository(ProductEntity).count()).toBe(2);
+        expect(await rollback.getRepository(ProductEntity).count()).toBe(10);
         expect(
           await rollback.getRepository(ProductEntity).findOneByOrFail({
             id: headphonesId,
           }),
         ).toMatchObject({ stock: 3, priceCents: 12_990_000 });
+        expect(
+          await rollback.getRepository(ProductEntity).findOneByOrFail({
+            id: backpackId,
+          }),
+        ).toMatchObject({ stock: 4, priceCents: 15_000_000 });
         expect(
           (
             await rollback.getRepository(ProductEntity).findOneByOrFail({
@@ -204,7 +233,7 @@ const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
         expect(
           await rollback.query("SELECT to_regclass('transactions')"),
         ).toEqual([{ to_regclass: null }]);
-        expect(await rollback.getRepository(ProductEntity).count()).toBe(2);
+        expect(await rollback.getRepository(ProductEntity).count()).toBe(10);
 
         await rollback.undoLastMigration();
         expect(await rollback.query("SELECT to_regclass('products')")).toEqual([
@@ -220,7 +249,7 @@ const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
       const reapplied = isolatedDataSource();
       await reapplied.initialize();
       try {
-        expect(await reapplied.getRepository(ProductEntity).count()).toBe(2);
+        expect(await reapplied.getRepository(ProductEntity).count()).toBe(10);
         expect(await reapplied.showMigrations()).toBe(false);
       } finally {
         await reapplied.destroy();

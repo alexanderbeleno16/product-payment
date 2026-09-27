@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
@@ -12,6 +12,16 @@ function CatalogScreen() {
   )
   const titleRef = useRef<HTMLHeadingElement>(null)
   const returningFromProduct = useRef(catalog.length > 0)
+  const [sortOrder, setSortOrder] = useState<'default' | 'price-desc'>('default')
+  const [sortOpen, setSortOpen] = useState(false)
+  const sortControlRef = useRef<HTMLDivElement>(null)
+  const sortTriggerRef = useRef<HTMLButtonElement>(null)
+  const sortLabelId = useId()
+  const sortValueId = useId()
+  const sortOptionsId = useId()
+  const visibleProducts = sortOrder === 'price-desc'
+    ? [...catalog].sort((first, second) => second.priceCents - first.priceCents)
+    : catalog
 
   useEffect(() => {
     if (returningFromProduct.current) titleRef.current?.focus()
@@ -22,12 +32,39 @@ function CatalogScreen() {
     return () => request.abort()
   }, [dispatch])
 
+  useEffect(() => {
+    if (!sortOpen) return
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!sortControlRef.current?.contains(event.target as Node)) setSortOpen(false)
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setSortOpen(false)
+      sortTriggerRef.current?.focus()
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [sortOpen])
+
+  function chooseSort(order: 'default' | 'price-desc') {
+    setSortOrder(order)
+    setSortOpen(false)
+    sortTriggerRef.current?.focus()
+  }
+
   return (
     <>
       <CheckoutHeader step={1} />
       <main className="checkout-main catalog-main">
         <div className="catalog-heading">
-          <p className="eyebrow">ShopiFast</p>
+          <p className="eyebrow">Catálogo</p>
           <h1 ref={titleRef} tabIndex={-1}>Explora nuestros productos</h1>
           <p>Elige un producto para continuar con una compra rápida y sencilla.</p>
         </div>
@@ -69,45 +106,86 @@ function CatalogScreen() {
           </div>
         )}
         {catalog.length > 0 && (
-          <div className="catalog-grid">
-            {catalog.map((product) => {
-              const image = getProductImage(product.id)
-              return (
-                <article className="catalog-card" key={product.id}>
-                  <div className="catalog-card__media">
-                    {image ? (
-                      <img
-                        src={image.src}
-                        alt=""
-                        width="768"
-                        height="768"
-                        decoding="async"
-                      />
-                    ) : (
-                      <span>Imagen no disponible</span>
-                    )}
-                  </div>
-                  <div className="catalog-card__body">
-                    <h2>{product.name}</h2>
-                    <p>{product.description}</p>
-                    <strong>{formatMoney(product.priceCents)}</strong>
-                    <span className="catalog-card__stock">
-                      {product.stock === 0
-                        ? 'Agotado'
-                        : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
-                    </span>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => dispatch(productSelected(product.id))}
-                    >
-                      Ver producto: {product.name}
+          <>
+            <div className="catalog-sort">
+              <span id={sortLabelId} className="catalog-sort__label">Ordenar productos</span>
+              <div
+                className="catalog-sort__control"
+                ref={sortControlRef}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setSortOpen(false)
+                }}
+              >
+                <button
+                  ref={sortTriggerRef}
+                  type="button"
+                  className="catalog-sort__trigger"
+                  aria-labelledby={sortLabelId}
+                  aria-describedby={sortValueId}
+                  aria-expanded={sortOpen}
+                  aria-controls={sortOptionsId}
+                  onClick={() => setSortOpen((open) => !open)}
+                >
+                  <span id={sortValueId}>{sortOrder === 'default' ? 'Orden predeterminado' : 'Precio: mayor a menor'}</span>
+                  <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                    <path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {sortOpen && (
+                  <div id={sortOptionsId} className="catalog-sort__options" role="group" aria-label="Opciones de orden">
+                    <button type="button" aria-pressed={sortOrder === 'default'} onClick={() => chooseSort('default')}>
+                      <span>Orden predeterminado</span>
+                      {sortOrder === 'default' && <span aria-hidden="true">✓</span>}
+                    </button>
+                    <button type="button" aria-pressed={sortOrder === 'price-desc'} onClick={() => chooseSort('price-desc')}>
+                      <span>Precio: mayor a menor</span>
+                      {sortOrder === 'price-desc' && <span aria-hidden="true">✓</span>}
                     </button>
                   </div>
-                </article>
-              )
-            })}
-          </div>
+                )}
+              </div>
+            </div>
+            <div className="catalog-grid">
+              {visibleProducts.map((product, index) => {
+                const image = getProductImage(product.id)
+                return (
+                  <article className="catalog-card" key={product.id}>
+                    <div className="catalog-card__media">
+                      {image ? (
+                        <img
+                          src={image.src}
+                          alt=""
+                          width="768"
+                          height="768"
+                          loading={index < 2 ? 'eager' : 'lazy'}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
+                          decoding="async"
+                        />
+                      ) : (
+                        <span>Imagen no disponible</span>
+                      )}
+                    </div>
+                    <div className="catalog-card__body">
+                      <h2>{product.name}</h2>
+                      <p>{product.description}</p>
+                      <strong>{formatMoney(product.priceCents)}</strong>
+                      <span className="catalog-card__stock">
+                        {product.stock === 0
+                          ? 'Agotado'
+                          : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="catalog-card__action"
+                      aria-label={`Ver producto: ${product.name}`}
+                      onClick={() => dispatch(productSelected(product.id))}
+                    />
+                  </article>
+                )
+              })}
+            </div>
+          </>
         )}
       </main>
     </>
