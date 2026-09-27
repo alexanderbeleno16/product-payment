@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "Product Payment API — local checkout contract",
+    "description": "Requests for the implemented buyer-facing backend API. Start the backend locally and set the collection variables before sending requests. Prices and stock are server-owned; 201 on checkout creation does not mean payment approval. The signed POST /payment/events endpoint is provider-to-server only and intentionally has no runnable example here: never fabricate a checksum or submit a synthetic event as an authority signal. Local Swagger UI is available at /api and OpenAPI JSON at /api-json while the backend is running. No public deployment URL is claimed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Read seeded product",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/products/{{productId}}",
+        "description": "200 returns id, name, description, currency, priceCents and current stock. The product ID must be UUID v4; malformed IDs return 400, missing products 404. This route does not create a checkout or change stock."
+      }
+    },
+    {
+      "name": "Quote one product",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/checkout/quote?productId={{productId}}&quantity={{quantity}}",
+        "description": "200 returns productId, quantity, currency, unitPriceCents, productAmountCents, baseFeeCents, deliveryFeeCents and totalCents. Amounts are integer COP cents calculated by the server. Invalid input returns 400; missing product 404; insufficient stock 409; unsupported currency 422. A quote does not reserve stock."
+      }
+    },
+    {
+      "name": "Read current consents",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/checkout/consents",
+        "description": "200 returns a browser-safe publicKey and current endUserPolicy and personalDataAuthorization documents, each with token and permalink. Review both current documents and obtain their tokens for a checkout. Provider unavailability returns 503. Never commit, export, or sync captured tokens."
+      }
+    },
+    {
+      "name": "Create or replay checkout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}",
+            "description": "Buyer-generated UUID v4. Reuse only for the exact same checkout intent."
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": {{quantity}},\n  \"installments\": 1,\n  \"customerEmail\": \"{{customerEmail}}\",\n  \"delivery\": {\n    \"recipientName\": \"{{recipientName}}\",\n    \"addressLine\": \"{{addressLine}}\",\n    \"city\": \"{{city}}\"\n  },\n  \"cardToken\": \"{{cardToken}}\",\n  \"acceptanceToken\": \"{{acceptanceToken}}\",\n  \"personalDataToken\": \"{{personalDataToken}}\",\n  \"acceptsEndUserPolicy\": true,\n  \"acceptsPersonalDataAuthorization\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/checkouts",
+        "description": "Requires a transient browser-generated card token, both current consent tokens, explicit consent, and delivery details. Never send raw card number, expiry or security code to this API. Do not persist payment/consent tokens in a shared Postman environment or export. 201 returns a local reference, current status and server-calculated quote, NOT approval or delivery. Same key and same canonical checkout data replay the original checkout without another payment submission. A different checkout with the same key returns 409. Validation or missing consent returns 400; missing product 404; insufficient stock 409; unsupported currency 422. PENDING and SUBMISSION_UNKNOWN need later status verification; do not blindly retry a charge after timeout."
+      }
+    },
+    {
+      "name": "Read local transaction status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}",
+            "description": "The original checkout UUID v4; this is not general user authentication."
+          }
+        ],
+        "url": "{{baseUrl}}/transactions/{{reference}}",
+        "description": "200 returns only reference, paymentStatus and fulfillmentStatus from local persistence; no provider call or state change. Reference has the form txn_<uuid-v4>. An invalid reference or key returns 400; an unknown or mismatched reference/key returns 404. APPROVED with STOCK_UNAVAILABLE means charged but no delivery; operator attention is required. DECLINED, VOIDED and ERROR do not decrement stock or create delivery."
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "productId",
+      "value": "8a52ea31-08d9-4f52-a604-00e56143dce0"
+    },
+    {
+      "key": "quantity",
+      "value": "1"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": ""
+    },
+    {
+      "key": "reference",
+      "value": ""
+    },
+    {
+      "key": "customerEmail",
+      "value": ""
+    },
+    {
+      "key": "recipientName",
+      "value": ""
+    },
+    {
+      "key": "addressLine",
+      "value": ""
+    },
+    {
+      "key": "city",
+      "value": ""
+    },
+    {
+      "key": "cardToken",
+      "value": ""
+    },
+    {
+      "key": "acceptanceToken",
+      "value": ""
+    },
+    {
+      "key": "personalDataToken",
+      "value": ""
+    }
+  ]
+}
