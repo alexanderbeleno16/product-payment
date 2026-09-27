@@ -101,7 +101,10 @@ test('opens main image fullscreen, supports arrow keys and Escape, and restores 
   await user.click(opener)
   const dialog = screen.getByRole('dialog', { name: 'Galería de imágenes de Audífonos inalámbricos' })
   expect(dialog).toBeVisible()
-  expect(within(dialog).getByRole('button', { name: 'Cerrar' })).toHaveFocus()
+  const closeButton = within(dialog).getByRole('button', { name: 'Cerrar' })
+  expect(closeButton).toHaveFocus()
+  expect(closeButton).not.toHaveTextContent('Cerrar')
+  expect(closeButton.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
   expect(document.body.style.overflow).toBe('hidden')
   expect(within(dialog).getByRole('img', { name: 'Audífonos inalámbricos negros de diadema' })).toBeVisible()
 

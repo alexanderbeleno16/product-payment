@@ -323,7 +323,8 @@
   padding: 0.35rem 0.5rem;
 }
 .gallery-stage__controls button,
-.gallery-lightbox__viewer button {
+.gallery-lightbox__viewer button,
+.gallery-lightbox__header button {
   align-items: center;
   background: #fff;
   border: 1px solid #d5deef;
@@ -337,7 +338,8 @@
   width: 2.75rem;
 }
 .gallery-stage__controls button svg,
-.gallery-lightbox__viewer button svg {
+.gallery-lightbox__viewer button svg,
+.gallery-lightbox__header button svg {
   display: block;
   flex: none;
 }
@@ -423,15 +425,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.gallery-lightbox__header button {
-  background: #243353;
-  border: 1px solid #5c6b86;
-  border-radius: 0.65rem;
-  color: #fff;
-  cursor: pointer;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.9rem;
 }
 .gallery-lightbox__viewer {
   align-items: center;

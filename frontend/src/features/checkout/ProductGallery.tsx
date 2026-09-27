@@ -176,8 +176,10 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
       >
         <div className="gallery-lightbox__header">
           <span>{productName}</span>
-          <button ref={closeRef} type="button" onClick={closeLightbox}>
-            Cerrar
+          <button ref={closeRef} type="button" aria-label="Cerrar" onClick={closeLightbox}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none">
+              <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
         <div className="gallery-lightbox__viewer">
