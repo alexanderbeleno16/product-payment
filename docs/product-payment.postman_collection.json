@@ -6,6 +6,15 @@
   },
   "item": [
     {
+      "name": "List seeded products",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/products",
+        "description": "200 returns an array of seeded products ordered by name and ID. Each item includes id, name, description, currency, priceCents and current stock. This read-only route does not create a checkout, reserve stock, or change inventory. An empty catalog returns 200 with an empty array."
+      }
+    },
+    {
       "name": "Read seeded product",
       "request": {
         "method": "GET",

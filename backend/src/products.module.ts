@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { GetProduct } from './application/get-product';
+import { ListProducts } from './application/list-products';
 import type { ProductReader } from './application/product-reader.port';
 import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
 import { DatabaseModule } from './adapters/outbound/persistence/database.module';
@@ -22,6 +23,12 @@ export const PRODUCT_READER = Symbol('PRODUCT_READER');
       provide: GetProduct,
       useFactory: (products: ProductReader): GetProduct =>
         new GetProduct(products),
+      inject: [PRODUCT_READER],
+    },
+    {
+      provide: ListProducts,
+      useFactory: (products: ProductReader): ListProducts =>
+        new ListProducts(products),
       inject: [PRODUCT_READER],
     },
   ],

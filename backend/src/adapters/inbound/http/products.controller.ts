@@ -7,13 +7,24 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetProduct } from '../../../application/get-product';
+import { ListProducts } from '../../../application/list-products';
 import type { Product } from '../../../domain/product';
 import { ProductResponseDto } from './response.dto';
 
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly getProduct: GetProduct) {}
+  constructor(
+    private readonly getProduct: GetProduct,
+    private readonly listProducts: ListProducts,
+  ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List seeded products and current stock' })
+  @ApiResponse({ status: 200, type: ProductResponseDto, isArray: true })
+  list(): Promise<Product[]> {
+    return this.listProducts.execute();
+  }
 
   @Get(':id')
   @ApiOperation({ summary: 'Read a seeded product and current stock' })

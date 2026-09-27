@@ -14,7 +14,7 @@ const product: Product = {
 describe('GetProduct', () => {
   it('returns trusted product and stock from the reader', async () => {
     const findById = jest.fn().mockResolvedValue(product);
-    const reader: ProductReader = { findById };
+    const reader: ProductReader = { findAll: jest.fn(), findById };
     const useCase = new GetProduct(reader);
 
     await expect(useCase.execute(product.id)).resolves.toEqual(product);
@@ -24,6 +24,7 @@ describe('GetProduct', () => {
 
   it('returns null when the product is missing', async () => {
     const reader: ProductReader = {
+      findAll: jest.fn(),
       findById: jest.fn().mockResolvedValue(null),
     };
 

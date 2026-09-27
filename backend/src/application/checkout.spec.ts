@@ -44,7 +44,7 @@ describe('checkout application', () => {
   const createPending = jest.fn();
   const claimSubmission = jest.fn();
   const recordSubmissionOutcome = jest.fn();
-  const reader: ProductReader = { findById };
+  const reader: ProductReader = { findAll: jest.fn(), findById };
   const store: CheckoutStore = {
     findByIdempotencyKey,
     findByReference: jest.fn(),
