@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { createDataSource } from './data-source';
+import type { DatabaseConnection } from './database-connection';
 import { migrate } from './migrate';
 import { ProductEntity } from './product.entity';
 import { seed } from './seed';
+import { TypeOrmProductReader } from './typeorm-product.reader';
 
 const testDatabaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
 const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
+const speakerId = '3685f095-a601-4ca6-ab54-0f8eb66bccd8';
 
 (testDatabaseUrl ? describe : describe.skip)(
   'database setup commands with PostgreSQL',
@@ -97,6 +100,30 @@ const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
       }
 
       await migrate(isolatedDataSource());
+      const previousSeed = isolatedDataSource();
+      await previousSeed.initialize();
+      try {
+        await previousSeed.getRepository(ProductEntity).insert([
+          {
+            id: headphonesId,
+            name: 'Wireless Headphones',
+            description: 'Over-ear wireless headphones',
+            currency: 'COP',
+            priceCents: 12_990_000,
+            stock: 12,
+          },
+          {
+            id: speakerId,
+            name: 'Portable Speaker',
+            description: 'Compact Bluetooth speaker',
+            currency: 'COP',
+            priceCents: 7_990_000,
+            stock: 8,
+          },
+        ]);
+      } finally {
+        await previousSeed.destroy();
+      }
       await seed(isolatedDataSource());
       await seed(isolatedDataSource());
 
@@ -104,8 +131,37 @@ const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
       await stockChange.initialize();
       try {
         expect(await stockChange.getRepository(ProductEntity).count()).toBe(2);
+        const reader = new TypeOrmProductReader({
+          get: async () => stockChange,
+        } as unknown as DatabaseConnection);
+        expect((await reader.findAll()).map((item) => item.name)).toEqual([
+          'Audífonos inalámbricos',
+          'Parlante portátil',
+        ]);
+        expect(
+          await stockChange.getRepository(ProductEntity).findOneByOrFail({
+            id: headphonesId,
+          }),
+        ).toMatchObject({
+          name: 'Audífonos inalámbricos',
+          description: expect.stringContaining(
+            'Audífonos inalámbricos de diadema',
+          ),
+        });
+        expect(
+          await stockChange.getRepository(ProductEntity).findOneByOrFail({
+            id: speakerId,
+          }),
+        ).toMatchObject({
+          name: 'Parlante portátil',
+          description: expect.stringContaining('Parlante portátil compacto'),
+        });
         await stockChange.getRepository(ProductEntity).update(headphonesId, {
           stock: 3,
+        });
+        await stockChange.getRepository(ProductEntity).update(speakerId, {
+          name: 'Portable Speaker',
+          description: 'Descripción personalizada por el operador',
         });
       } finally {
         await stockChange.destroy();
@@ -121,6 +177,20 @@ const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
             id: headphonesId,
           }),
         ).toMatchObject({ stock: 3, priceCents: 12_990_000 });
+        expect(
+          (
+            await rollback.getRepository(ProductEntity).findOneByOrFail({
+              id: speakerId,
+            })
+          ).description,
+        ).toBe('Descripción personalizada por el operador');
+        expect(
+          (
+            await rollback.getRepository(ProductEntity).findOneByOrFail({
+              id: speakerId,
+            })
+          ).name,
+        ).toBe('Portable Speaker');
 
         await rollback.undoLastMigration();
         expect(
