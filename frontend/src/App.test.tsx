@@ -133,6 +133,44 @@ test('shows a server catalog and opens one authoritative product quote', async (
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
 })
 
+test('shows exactly two product accordions with description open and verified details on demand', async () => {
+  installApi()
+  const user = userEvent.setup()
+  renderCheckout()
+  await openProduct('Audífonos inalámbricos')
+
+  const description = screen.getByText('Descripción', { selector: 'summary' })
+  const characteristics = screen.getByText('Características del producto', { selector: 'summary' })
+  expect(document.querySelectorAll('.product-accordions details')).toHaveLength(2)
+  expect(description.closest('details')).toHaveAttribute('open')
+  expect(characteristics.closest('details')).not.toHaveAttribute('open')
+  expect(screen.getByText(headphones.description)).toBeVisible()
+
+  await user.click(characteristics)
+  expect(characteristics.closest('details')).toHaveAttribute('open')
+  expect(screen.getByText('Conexión')).toBeVisible()
+  expect(screen.getByText('Inalámbrica')).toBeVisible()
+
+  await user.click(description)
+  expect(description.closest('details')).not.toHaveAttribute('open')
+})
+
+test('does not invent characteristics for a product outside the demo catalog', async () => {
+  const extra: Product = {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Producto personalizado',
+    description: 'Descripción provista por el servidor.',
+    currency: 'COP',
+    priceCents: 100_000,
+    stock: 1,
+  }
+  installApi([extra])
+  renderCheckout()
+  await openProduct(extra.name)
+  await userEvent.setup().click(screen.getByText('Características del producto', { selector: 'summary' }))
+  expect(screen.getByText('No hay características verificadas para este producto.')).toBeVisible()
+})
+
 test('shows ten server products with optimized loading priorities and opens a new product', async () => {
   const products = [headphones, speaker, ...additionalProducts]
   const fetchMock = installApi(products)

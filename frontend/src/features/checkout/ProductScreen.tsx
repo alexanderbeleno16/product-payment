@@ -3,6 +3,7 @@ import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
 import ProductGallery from './ProductGallery'
+import { getProductCharacteristics } from './productCharacteristics'
 import {
   catalogReturnRequested,
   cardEntryRequested,
@@ -106,6 +107,7 @@ function ProductScreen() {
   }
 
   const soldOut = product.stock === 0
+  const characteristics = getProductCharacteristics(product.id)
   const quoteReady =
     quoteStatus === 'ready' &&
     quote?.quantity === quantity &&
@@ -123,7 +125,29 @@ function ProductScreen() {
             <div className="product-card__intro">
               <p className="eyebrow">Producto seleccionado</p>
               <h1 id="product-title" ref={titleRef} tabIndex={-1}>{product.name}</h1>
-              <p className="product-description">{product.description}</p>
+              <div className="product-accordions">
+                <details key={`${product.id}-description`} open>
+                  <summary>Descripción</summary>
+                  <p className="product-description">{product.description}</p>
+                </details>
+                <details key={`${product.id}-characteristics`}>
+                  <summary>Características del producto</summary>
+                  {characteristics.length ? (
+                    <dl className="product-characteristics">
+                      {characteristics.map(([label, value]) => (
+                        <div key={label}>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="product-characteristics__empty">
+                      No hay características verificadas para este producto.
+                    </p>
+                  )}
+                </details>
+              </div>
               <p className={`stock-badge${soldOut ? ' stock-badge--empty' : ''}`}>
                 {soldOut
                   ? 'Agotado'

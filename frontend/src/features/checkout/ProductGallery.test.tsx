@@ -1,9 +1,22 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ProductGallery from './ProductGallery'
 import { HEADPHONES_PRODUCT_ID, SPEAKER_PRODUCT_ID } from './productImages'
 
 beforeAll(() => {
+  Object.defineProperty(window, 'PointerEvent', {
+    configurable: true,
+    value: class PointerEventPolyfill extends MouseEvent {
+      pointerId: number
+      pointerType: string
+
+      constructor(type: string, init: PointerEventInit = {}) {
+        super(type, init)
+        this.pointerId = init.pointerId ?? 0
+        this.pointerType = init.pointerType ?? ''
+      }
+    },
+  })
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value: function showModal(this: HTMLDialogElement) {
@@ -25,6 +38,10 @@ test('slides between both cached headphone views without changing checkout state
 
   const mainImage = screen.getByRole('img', { name: 'Audífonos inalámbricos negros de diadema' })
   expect(mainImage).toHaveAttribute('src', '/wireless-headphones.webp')
+  const pagination = document.querySelector('.gallery-pagination')
+  expect(pagination?.querySelectorAll('.gallery-pagination__dot')).toHaveLength(2)
+  expect(pagination?.querySelectorAll('.gallery-pagination__dot--active')).toHaveLength(1)
+  expect(pagination?.parentElement?.querySelector('.visually-hidden')).toHaveTextContent('Foto 1 de 2')
   const alternateThumbnail = screen.getByRole('button', {
     name: 'Abrir foto 2 de Audífonos inalámbricos en pantalla completa',
   })
@@ -36,8 +53,42 @@ test('slides between both cached headphone views without changing checkout state
     'src',
     '/wireless-headphones-side.webp',
   )
+  expect(pagination?.querySelectorAll('.gallery-pagination__dot--active')).toHaveLength(1)
+  expect(pagination?.parentElement?.querySelector('.visually-hidden')).toHaveTextContent('Foto 2 de 2')
   await user.click(screen.getByRole('button', { name: 'Imagen anterior' }))
   expect(screen.getByRole('img', { name: 'Audífonos inalámbricos negros de diadema' })).toBeVisible()
+})
+
+test.each(['touch', 'mouse'])('%s horizontal swipe changes the image without opening fullscreen', (pointerType) => {
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  const main = screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  })
+
+  fireEvent.pointerDown(main, { pointerId: 1, pointerType, button: 0, clientX: 200, clientY: 120 })
+  fireEvent.pointerUp(main, { pointerId: 1, pointerType, button: 0, clientX: 100, clientY: 126 })
+  fireEvent.click(main)
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones-side.webp')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  fireEvent.pointerDown(main, { pointerId: 2, pointerType, button: 0, clientX: 100, clientY: 120 })
+  fireEvent.pointerUp(main, { pointerId: 2, pointerType, button: 0, clientX: 195, clientY: 125 })
+  fireEvent.click(main)
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones.webp')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  fireEvent.click(main)
+  expect(screen.getByRole('dialog', { name: 'Galería de imágenes de Audífonos inalámbricos' })).toBeVisible()
+})
+
+test('vertical touch travel does not change the gallery image', () => {
+  render(<ProductGallery productId={HEADPHONES_PRODUCT_ID} productName="Audífonos inalámbricos" />)
+  const main = screen.getByRole('button', {
+    name: 'Abrir imagen de Audífonos inalámbricos en pantalla completa',
+  })
+  fireEvent.pointerDown(main, { pointerId: 1, pointerType: 'touch', clientX: 120, clientY: 100 })
+  fireEvent.pointerUp(main, { pointerId: 1, pointerType: 'touch', clientX: 145, clientY: 210 })
+  expect(main.querySelector('img')).toHaveAttribute('src', '/wireless-headphones.webp')
 })
 
 test('opens main image fullscreen, supports arrow keys and Escape, and restores focus', async () => {

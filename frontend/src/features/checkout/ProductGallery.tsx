@@ -6,6 +6,20 @@ interface ProductGalleryProps {
   productName: string
 }
 
+function GalleryChevron({ direction }: { direction: 'previous' | 'next' }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none">
+      <path
+        d={direction === 'previous' ? 'm15 18-6-6 6-6' : 'm9 6 6 6-6 6'}
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function ProductGallery({ productId, productName }: ProductGalleryProps) {
   const images = getProductImages(productId)
   const [activeIndex, setActiveIndex] = useState(0)
@@ -13,6 +27,8 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const openerRef = useRef<HTMLButtonElement | null>(null)
+  const pointerStartRef = useRef<{ id: number; x: number; y: number } | null>(null)
+  const suppressClickRef = useRef(false)
   const activeImage = images[activeIndex] ?? images[0]
 
   useLayoutEffect(() => {
@@ -50,6 +66,28 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
     dialogRef.current?.close()
   }
 
+  function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    suppressClickRef.current = false
+    if ((event.pointerType === 'mouse' && event.button !== 0) || images.length < 2) return
+    pointerStartRef.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLButtonElement>) {
+    const start = pointerStartRef.current
+    pointerStartRef.current = null
+    if (!start || start.id !== event.pointerId) return
+    const horizontalTravel = event.clientX - start.x
+    const verticalTravel = event.clientY - start.y
+    if (Math.abs(horizontalTravel) < 48 || Math.abs(horizontalTravel) <= Math.abs(verticalTravel)) return
+    suppressClickRef.current = true
+    showNextImage(horizontalTravel < 0 ? 1 : -1)
+  }
+
   return (
     <section className="product-gallery" aria-label="Imágenes del producto">
       <div className="gallery-stage product-media">
@@ -57,7 +95,17 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
           type="button"
           className="gallery-main-image"
           aria-label={`Abrir imagen de ${productName} en pantalla completa`}
-          onClick={(event) => openLightbox(activeIndex, event.currentTarget)}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => { pointerStartRef.current = null }}
+          onKeyDown={() => { suppressClickRef.current = false }}
+          onClick={(event) => {
+            if (suppressClickRef.current) {
+              suppressClickRef.current = false
+              return
+            }
+            openLightbox(activeIndex, event.currentTarget)
+          }}
         >
           <img
             src={activeImage.src}
@@ -66,17 +114,23 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
             alt={activeImage.alt}
             fetchPriority="high"
             decoding="async"
+            draggable={false}
           />
         </button>
         <div className="gallery-stage__controls">
           <button type="button" aria-label="Imagen anterior" onClick={() => showNextImage(-1)}>
-            ‹
+            <GalleryChevron direction="previous" />
           </button>
-          <span aria-live={lightboxOpen ? 'off' : 'polite'}>
+          <div className="gallery-pagination" aria-hidden="true">
+            {images.map((image, index) => (
+              <span key={image.src} className={index === activeIndex ? 'gallery-pagination__dot gallery-pagination__dot--active' : 'gallery-pagination__dot'} />
+            ))}
+          </div>
+          <span className="visually-hidden" aria-live={lightboxOpen ? 'off' : 'polite'}>
             Foto {activeIndex + 1} de {images.length}
           </span>
           <button type="button" aria-label="Imagen siguiente" onClick={() => showNextImage(1)}>
-            ›
+            <GalleryChevron direction="next" />
           </button>
         </div>
       </div>
@@ -128,11 +182,11 @@ function ProductGallery({ productId, productName }: ProductGalleryProps) {
         </div>
         <div className="gallery-lightbox__viewer">
           <button type="button" aria-label="Imagen anterior en pantalla completa" onClick={() => showNextImage(-1)}>
-            ‹
+            <GalleryChevron direction="previous" />
           </button>
           <img src={activeImage.src} alt={activeImage.alt} width="768" height="768" decoding="async" />
           <button type="button" aria-label="Imagen siguiente en pantalla completa" onClick={() => showNextImage(1)}>
-            ›
+            <GalleryChevron direction="next" />
           </button>
         </div>
         <p className="gallery-lightbox__position" aria-live="polite">
