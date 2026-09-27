@@ -7,6 +7,7 @@ import type {
 import type { PaymentSubmissionOutcome } from '../../../application/payment-gateway.port';
 import { IdempotencyKeyTaken } from '../../../application/checkout-store.port';
 import type { CheckoutTransaction } from '../../../application/checkout';
+import { isFinalPaymentStatus } from '../../../domain/checkout';
 import { CustomerEntity } from './customer.entity';
 import { DatabaseConnection } from './database-connection';
 import { TransactionEntity } from './transaction.entity';
@@ -140,13 +141,35 @@ export class TypeOrmCheckoutStore implements CheckoutStore {
         { reference, unknown: 'SUBMISSION_UNKNOWN' },
       )
       .execute();
-    if (result.affected !== 1) {
-      throw new Error('Submission outcome could not be recorded');
-    }
     const entity = await dataSource.getRepository(TransactionEntity).findOneBy({
       reference,
     });
     if (!entity) throw new Error('Recorded checkout disappeared');
+    if (result.affected !== 1) {
+      if (entity.submissionStartedAt === null) {
+        throw new Error('Submission outcome could not be recorded');
+      }
+      const eventWon =
+        isFinalPaymentStatus(entity.status) ||
+        (entity.status === 'PENDING' && entity.providerTransactionId !== null);
+      if (eventWon) {
+        if (
+          outcome.kind === 'ACCEPTED' &&
+          entity.providerTransactionId !== outcome.providerTransactionId
+        ) {
+          throw new Error('Provider transaction identity conflict');
+        }
+        return toCheckout(entity);
+      }
+      if (
+        (outcome.kind === 'UNKNOWN' &&
+          entity.status === 'SUBMISSION_UNKNOWN') ||
+        (outcome.kind === 'REJECTED' && entity.status === 'SUBMISSION_REJECTED')
+      ) {
+        return toCheckout(entity);
+      }
+      throw new Error('Submission outcome could not be recorded');
+    }
     return toCheckout(entity);
   }
 }

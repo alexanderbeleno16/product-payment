@@ -1,6 +1,9 @@
 import type { CheckoutInput, CheckoutTransaction } from './checkout';
 import type { CheckoutStore, NewPendingCheckout } from './checkout-store.port';
-import type { PaymentGateway, PaymentSubmissionOutcome } from './payment-gateway.port';
+import type {
+  PaymentGateway,
+  PaymentSubmissionOutcome,
+} from './payment-gateway.port';
 import type { ProductReader } from './product-reader.port';
 import { StartCheckout } from './start-checkout';
 import { InitiatePayment } from './initiate-payment';
@@ -73,6 +76,7 @@ describe('InitiatePayment', () => {
         idempotencyKey: command.input.idempotencyKey,
         requestFingerprint: command.requestFingerprint,
         status: 'PENDING',
+        fulfillmentStatus: 'NOT_STARTED',
         submissionStartedAt: null,
         providerTransactionId: null,
         createdAt: new Date('2026-09-26T00:00:00Z'),
@@ -113,7 +117,11 @@ describe('InitiatePayment', () => {
 
   it('rejects missing transient credentials before creating a PENDING row', async () => {
     expect(
-      await initiate.execute(input, { ...credentials, personalDataToken: '' }, consent),
+      await initiate.execute(
+        input,
+        { ...credentials, personalDataToken: '' },
+        consent,
+      ),
     ).toEqual({ ok: false, reason: 'INVALID_INPUT' });
     expect(createPending).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
@@ -214,7 +222,11 @@ describe('InitiatePayment', () => {
     const first = await initiate.execute(input, credentials, consent);
     expect(first.ok).toBe(true);
     expect(
-      await initiate.execute({ ...input, installments: 3 }, credentials, consent),
+      await initiate.execute(
+        { ...input, installments: 3 },
+        credentials,
+        consent,
+      ),
     ).toEqual({ ok: false, reason: 'IDEMPOTENCY_CONFLICT' });
     expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
@@ -227,9 +239,8 @@ describe('InitiatePayment', () => {
       ok: true,
       value: { status: 'SUBMISSION_REJECTED', providerTransactionId: null },
     });
-    expect(recordSubmissionOutcome).toHaveBeenCalledWith(
-      expect.any(String),
-      { kind: 'REJECTED' },
-    );
+    expect(recordSubmissionOutcome).toHaveBeenCalledWith(expect.any(String), {
+      kind: 'REJECTED',
+    });
   });
 });
