@@ -240,6 +240,32 @@ describe('checkout application', () => {
     expect(createPending).not.toHaveBeenCalled();
   });
 
+  it('rejects malformed direct-use values before canonicalization or persistence', async () => {
+    const useCase = new StartCheckout(reader, store);
+    const malformed: unknown[] = [
+      null,
+      [],
+      { ...input, idempotencyKey: null },
+      { ...input, productId: 42 },
+      { ...input, quantity: '2' },
+      { ...input, installments: undefined },
+      { ...input, customerEmail: {} },
+      { ...input, delivery: null },
+      { ...input, delivery: [input.delivery] },
+      { ...input, delivery: { ...input.delivery, city: 42 } },
+      { ...input, delivery: { ...input.delivery, addressLine: ' '.repeat(4) } },
+    ];
+    for (const raw of malformed) {
+      await expect(useCase.execute(raw as CheckoutInput)).resolves.toEqual({
+        ok: false,
+        reason: 'INVALID_INPUT',
+      });
+    }
+    expect(findByIdempotencyKey).not.toHaveBeenCalled();
+    expect(findById).not.toHaveBeenCalled();
+    expect(createPending).not.toHaveBeenCalled();
+  });
+
   it('does not persist a PENDING transaction when requested quantity exceeds stock', async () => {
     expect(
       await new StartCheckout(reader, store).execute({
