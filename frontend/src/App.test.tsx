@@ -259,6 +259,9 @@ test('shows ten server products with optimized loading priorities and opens a ne
   expect(await screen.findByRole('heading', { name: 'Soporte plegable para teléfono gris' })).toBeVisible()
   const cards = screen.getAllByRole('article')
   expect(cards).toHaveLength(10)
+  expect(within(cards[0]).getByText('Stock:')).toBeVisible()
+  expect(within(cards[0]).getByText('2')).toHaveClass('catalog-card__stock-value')
+  expect(within(cards[2]).getByText('14')).toHaveClass('catalog-card__stock-value')
   expect(cards[0].querySelector('img')).toHaveAttribute('loading', 'eager')
   expect(cards[0].querySelector('img')).toHaveAttribute('fetchpriority', 'high')
   expect(cards[1].querySelector('img')).toHaveAttribute('loading', 'eager')
@@ -292,7 +295,7 @@ test('sorts a copy of the catalog by descending price and restores server order'
   const firstCard = () => screen.getAllByRole('article')[0]
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
 
-  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar' })
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
   await user.click(sortTrigger)
   const sortOptions = screen.getByRole('group', { name: 'Opciones de orden' })
@@ -316,7 +319,7 @@ test('closes the sort choices on Escape or outside click without losing keyboard
   renderCheckout()
   await screen.findByRole('heading', { name: 'Explora nuestros productos' })
 
-  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar' })
   sortTrigger.focus()
   await user.keyboard('{Enter}')
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'true')
@@ -348,7 +351,7 @@ test('opens a product with the full-card native button using the keyboard', asyn
   await user.tab()
   expect(screen.getByRole('button', { name: 'ShopiFast: ir al catálogo' })).toHaveFocus()
   await user.tab()
-  expect(screen.getByRole('button', { name: 'Ordenar productos' })).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Ordenar' })).toHaveFocus()
   await user.tab()
   const firstCard = screen.getAllByRole('article')[0]
   expect(within(firstCard).getByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).toHaveFocus()
@@ -447,12 +450,16 @@ test('keeps loaded cards visible during refresh and after a refresh error', asyn
       : originalFetch(input),
   )
   await user.click(screen.getByRole('button', { name: 'Volver a intentar' }))
-  expect(await screen.findByText('1 unidad disponible')).toBeVisible()
+  await waitFor(() => expect(within(screen.getAllByRole('article')[0]).getByText('1')).toBeVisible())
 })
 
 test('does not quote or enable checkout for a sold-out product', async () => {
   const fetchMock = installApi([{ ...headphones, stock: 0 }])
   renderCheckout()
+  const catalogCard = (await screen.findByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).closest('article')
+  expect(catalogCard).not.toBeNull()
+  expect(within(catalogCard!).getByText('Stock:')).toBeVisible()
+  expect(within(catalogCard!).getByText('0 · Agotado')).toHaveClass('catalog-card__stock-value--empty')
   await openProduct('Audífonos inalámbricos')
   expect(screen.getByText('Agotado')).toBeVisible()
   expect(screen.getByText('Producto agotado. No puedes continuar con la compra.')).toBeVisible()

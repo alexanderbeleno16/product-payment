@@ -108,7 +108,7 @@ function CatalogScreen() {
         {catalog.length > 0 && (
           <>
             <div className="catalog-sort">
-              <span id={sortLabelId} className="catalog-sort__label">Ordenar productos</span>
+              <span id={sortLabelId} className="catalog-sort__label">Ordenar</span>
               <div
                 className="catalog-sort__control"
                 ref={sortControlRef}
@@ -169,11 +169,14 @@ function CatalogScreen() {
                       <h2>{product.name}</h2>
                       <p>{product.description}</p>
                       <strong>{formatMoney(product.priceCents)}</strong>
-                      <span className="catalog-card__stock">
-                        {product.stock === 0
-                          ? 'Agotado'
-                          : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
-                      </span>
+                      <div className="catalog-card__stock">
+                        <span>Stock:</span>
+                        <span className={product.stock === 0
+                          ? 'catalog-card__stock-value catalog-card__stock-value--empty'
+                          : 'catalog-card__stock-value'}>
+                          {product.stock === 0 ? '0 · Agotado' : product.stock}
+                        </span>
+                      </div>
                     </div>
                     <button
                       type="button"
