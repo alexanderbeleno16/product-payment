@@ -41,11 +41,13 @@ describe('checkout application', () => {
   const findByIdempotencyKey = jest.fn();
   const createPending = jest.fn();
   const claimSubmission = jest.fn();
+  const recordSubmissionOutcome = jest.fn();
   const reader: ProductReader = { findById };
   const store: CheckoutStore = {
     findByIdempotencyKey,
     createPending,
     claimSubmission,
+    recordSubmissionOutcome,
   };
 
   beforeEach(() => {

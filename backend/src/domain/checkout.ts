@@ -10,7 +10,12 @@ export interface CheckoutQuote {
 }
 
 export type PaymentStatus =
-  'PENDING' | 'SUBMISSION_UNKNOWN' | 'APPROVED' | 'DECLINED' | 'ERROR';
+  | 'PENDING'
+  | 'SUBMISSION_UNKNOWN'
+  | 'SUBMISSION_REJECTED'
+  | 'APPROVED'
+  | 'DECLINED'
+  | 'ERROR';
 
 export type PricingFailure =
   'INVALID_INPUT' | 'INSUFFICIENT_STOCK' | 'UNSUPPORTED_CURRENCY';
