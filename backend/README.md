@@ -1,6 +1,6 @@
 # Backend
 
-NestJS and TypeScript API for a single-product checkout. The current backend has PostgreSQL-backed dummy products, a read-only product endpoint, and application/persistence logic for server-priced, idempotent PENDING checkouts. The checkout logic is **not yet exposed by HTTP**; sandbox submission, stock decrement, and delivery are not implemented.
+NestJS and TypeScript API for a single-product checkout. The current backend has PostgreSQL-backed dummy products, a read-only product endpoint, and internal server-priced, idempotent PENDING checkout and sandbox-submission logic. Checkout and payment are **not yet exposed by HTTP**; stock decrement and delivery are not implemented.
 
 ## Run locally
 
@@ -97,13 +97,13 @@ npm run test:e2e -- --runInBand
 npm run test:cov -- --runInBand --coverageReporters=text-summary
 ```
 
-Unit and HTTP E2E tests use fake ports and do not require PostgreSQL. A separate conditional test exercises migrations, idempotency races, original-price replay, and one-time submission claim against a real isolated PostgreSQL database when `CHECKOUT_TEST_DATABASE_URL` points to a database whose name ends in `_test`. With the local container above, first create an isolated test database, then run:
+Most unit and HTTP E2E tests use fake ports and do not require PostgreSQL. Conditional integration tests exercise migrations and seed lifecycle, idempotency races, original-price replay, and one-time submission claim against real PostgreSQL when `CHECKOUT_TEST_DATABASE_URL` points to a database whose name ends in `_test`. The migration/seed test creates and removes a further isolated test database, so the test user needs `CREATEDB` permission. With the disposable local container above, create the parent test database, then run:
 
 ```bash
 docker exec product-payment-postgres psql -U checkout -d checkout -c 'CREATE DATABASE checkout_p2_test'
 CHECKOUT_TEST_DATABASE_URL='postgresql://checkout:local-only@127.0.0.1:5432/checkout_p2_test' npm test -- --runInBand
 ```
 
-Without this variable, the PostgreSQL suite is skipped rather than replaced with a mock. Coverage is measured for this backend alone; it is not yet the final challenge-wide coverage claim. The frontend Jest runner and payment-path tests are future work.
+Without this variable, the PostgreSQL suites are skipped rather than replaced with mocks. Coverage is measured for this backend alone; it is not yet the final challenge-wide coverage claim. The frontend Jest runner and public payment-path tests are future work.
 
-On 2026-09-26, `CHECKOUT_TEST_DATABASE_URL=... npm run test:cov -- --runInBand --coverageReporters=text-summary` measured 66.91% statements, 68.04% branches, 60.46% functions, and 68.08% lines across `src/`, including one-off migration and seed scripts. This is **below** the brief's final greater-than-80% per-application target; further behavior tests are still needed. Without the real-database variable, the PostgreSQL test suite is skipped and the measured percentages are lower.
+On 2026-09-26, `CHECKOUT_TEST_DATABASE_URL=... npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 46 tests and measured **81.31% statements, 84.07% branches, 80.70% functions, and 82.69% lines** across `src/`, including migration and seed scripts. Four separate HTTP E2E tests also passed. This exceeds 80% for the current backend snapshot, **not** for the unfinished checkout HTTP work or the frontend; remeasure after those changes. Without the real-database variable, PostgreSQL suites are skipped and the measured percentages are lower.

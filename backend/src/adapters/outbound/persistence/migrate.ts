@@ -1,7 +1,6 @@
 import { createDataSource } from './data-source';
 
-async function migrate(): Promise<void> {
-  const dataSource = createDataSource();
+export async function migrate(dataSource = createDataSource()): Promise<void> {
   try {
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -12,10 +11,12 @@ async function migrate(): Promise<void> {
   }
 }
 
-void migrate().catch((error: unknown) => {
-  console.error('Database migration failed', { code: getErrorCode(error) });
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  void migrate().catch((error: unknown) => {
+    console.error('Database migration failed', { code: getErrorCode(error) });
+    process.exitCode = 1;
+  });
+}
 
 function getErrorCode(error: unknown): string {
   if (
