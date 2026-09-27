@@ -70,7 +70,7 @@ function CatalogScreen() {
         )}
         {catalog.length > 0 && (
           <div className="catalog-grid">
-            {catalog.map((product) => {
+            {catalog.map((product, index) => {
               const image = getProductImage(product.id)
               return (
                 <article className="catalog-card" key={product.id}>
@@ -81,6 +81,8 @@ function CatalogScreen() {
                         alt=""
                         width="768"
                         height="768"
+                        loading={index < 2 ? 'eager' : 'lazy'}
+                        fetchPriority={index === 0 ? 'high' : 'auto'}
                         decoding="async"
                       />
                     ) : (
@@ -99,9 +101,10 @@ function CatalogScreen() {
                     <button
                       type="button"
                       className="secondary-button"
+                      aria-label={`Ver producto: ${product.name}`}
                       onClick={() => dispatch(productSelected(product.id))}
                     >
-                      Ver producto: {product.name}
+                      Ver producto
                     </button>
                   </div>
                 </article>

@@ -107,7 +107,10 @@
   white-space: nowrap;
 }
 .catalog-heading {
-  margin-bottom: 1.8rem;
+  margin-bottom: 1.25rem;
+}
+.catalog-main {
+  padding-bottom: 3rem;
 }
 .catalog-heading h1 {
   font-size: clamp(1.7rem, 4vw, 2.5rem);
@@ -121,7 +124,22 @@
 }
 .catalog-grid {
   display: grid;
-  gap: 1.2rem;
+  gap: 0.75rem;
+}
+@media (min-width: 22.5rem) {
+  .catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 47rem) {
+  .catalog-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 64rem) {
+  .catalog-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 .catalog-notice {
   color: #52617f;
@@ -143,12 +161,14 @@
   border: 1px solid #e9edf5;
   border-radius: 1.3rem;
   box-shadow: 0 0.8rem 2rem #1f2a530c;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
 }
 .catalog-card__media {
   align-items: center;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 1;
   background: #f2eee8;
   color: #647189;
   display: flex;
@@ -163,18 +183,22 @@
 }
 .catalog-card__body {
   display: grid;
-  gap: 0.7rem;
-  padding: 1.25rem;
+  flex: 1;
+  gap: 0.45rem;
+  grid-template-rows: auto 1fr auto auto auto;
+  min-width: 0;
+  padding: 0.85rem;
 }
 .catalog-card__body h2 {
-  font-size: 1.25rem;
+  font-size: clamp(0.95rem, 2.3vw, 1.15rem);
   line-height: 1.2;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .catalog-card__body p {
   color: #647189;
   display: -webkit-box;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   line-height: 1.45;
   margin: 0;
   overflow: hidden;
@@ -182,15 +206,17 @@
   -webkit-line-clamp: 2;
 }
 .catalog-card__body strong {
-  font-size: 1.15rem;
+  font-size: clamp(0.95rem, 2.2vw, 1.1rem);
 }
 .catalog-card__stock {
   color: #1d5364;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 .catalog-card .secondary-button {
-  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+  padding-inline: 0.4rem;
   width: 100%;
 }
 .product-layout {
@@ -586,12 +612,6 @@
   }
   .checkout-main {
     padding-top: 2.5rem;
-  }
-  .catalog-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .catalog-card__media {
-    aspect-ratio: 4 / 3;
   }
   .product-layout {
     align-items: start;

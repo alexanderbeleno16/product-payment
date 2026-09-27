@@ -35,6 +35,25 @@ const speaker: Product = {
   stock: 8,
 }
 
+const additionalProductSeeds = [
+  ['9b135df6-299a-43c1-a33f-6f3a0fc9281a', 'Mochila urbana negra', 15_990_000, 14],
+  ['ee4216cd-55e7-42c1-9c25-398c385955ad', 'Billetera compacta de cuero marrón', 6_990_000, 22],
+  ['aa6cc46a-7dd1-4f36-a884-8e75088851b9', 'Termo de viaje de acero oscuro', 8_490_000, 18],
+  ['79e9bec3-9a34-43fe-a5d4-b11e22f20f89', 'Ratón inalámbrico gris grafito', 5_990_000, 16],
+  ['19777d45-8fe4-4a48-ba25-ff41b30c5816', 'Lámpara de escritorio LED negra', 11_990_000, 11],
+  ['934c2c27-f973-43a1-b6e1-3feb06800c0c', 'Teclado mecánico compacto gris oscuro', 18_990_000, 9],
+  ['2f5bea3c-9169-4172-a395-6afa0448009a', 'Batería externa portátil negra', 10_990_000, 13],
+  ['14746114-cb12-446c-8386-3c7bce2bd966', 'Soporte plegable para teléfono gris', 3_990_000, 24],
+] as const
+const additionalProducts: Product[] = additionalProductSeeds.map(([id, name, priceCents, stock]) => ({
+  id,
+  name,
+  description: `Descripción detallada de ${name} para el uso diario.`,
+  currency: 'COP',
+  priceCents,
+  stock,
+}))
+
 function installApi(products: Product[] = [headphones, speaker]) {
   const fetchMock = jest.fn(async (input: string) => {
     if (input === '/products') return response(products)
@@ -112,6 +131,38 @@ test('shows a server catalog and opens one authoritative product quote', async (
   expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
   await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+})
+
+test('shows ten server products with optimized loading priorities and opens a new product', async () => {
+  const products = [headphones, speaker, ...additionalProducts]
+  const fetchMock = installApi(products)
+  const user = userEvent.setup()
+  renderCheckout()
+
+  expect(await screen.findByRole('heading', { name: 'Soporte plegable para teléfono gris' })).toBeVisible()
+  const cards = screen.getAllByRole('article')
+  expect(cards).toHaveLength(10)
+  expect(cards[0].querySelector('img')).toHaveAttribute('loading', 'eager')
+  expect(cards[0].querySelector('img')).toHaveAttribute('fetchpriority', 'high')
+  expect(cards[1].querySelector('img')).toHaveAttribute('loading', 'eager')
+  expect(cards[9].querySelector('img')).toHaveAttribute('loading', 'lazy')
+  expect(cards[9].querySelector('img')).toHaveAttribute('width', '768')
+  expect(cards[9].querySelector('img')).toHaveAttribute('height', '768')
+  expect(cards[9].querySelector('img')).toHaveAttribute('src', '/phone-stand.webp')
+  expect(screen.getByRole('button', { name: 'Ver producto: Mochila urbana negra' })).toHaveTextContent('Ver producto')
+
+  await user.click(screen.getByRole('button', { name: 'Ver producto: Mochila urbana negra' }))
+  expect(await screen.findByRole('heading', { name: 'Mochila urbana negra', level: 1 })).toHaveFocus()
+  expect(screen.getByText(products[2].description)).toBeVisible()
+  expect(screen.getByText('14 unidades disponibles')).toBeVisible()
+  expect(screen.getByRole('img', { name: 'Mochila urbana negra de frente' })).toHaveAttribute('src', '/urban-backpack.webp')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' })).toBeEnabled())
+  expect(screen.getAllByText('COP 159.900').length).toBeGreaterThan(0)
+  expect(fetchMock.mock.calls.some(([path]) => path.includes(`productId=${products[2].id}&quantity=1`))).toBe(true)
+
+  await user.click(screen.getByRole('button', { name: 'Catálogo' }))
+  expect(await screen.findByRole('heading', { name: 'Explora nuestros productos' })).toHaveFocus()
+  expect(screen.getAllByRole('article')).toHaveLength(10)
 })
 
 test('returns through the breadcrumb and selects a new product with reset quantity', async () => {

@@ -83,6 +83,36 @@ test('opens the chosen speaker thumbnail directly and restores focus on close', 
   expect(thumbnail).toHaveFocus()
 })
 
+test.each([
+  ['Mochila urbana negra', '9b135df6-299a-43c1-a33f-6f3a0fc9281a', '/urban-backpack.webp', '/urban-backpack-side.webp'],
+  ['Billetera compacta', 'ee4216cd-55e7-42c1-9c25-398c385955ad', '/compact-wallet.webp', '/compact-wallet-open.webp'],
+  ['Termo de viaje', 'aa6cc46a-7dd1-4f36-a884-8e75088851b9', '/travel-tumbler.webp', '/travel-tumbler-side.webp'],
+  ['Ratón inalámbrico', '79e9bec3-9a34-43fe-a5d4-b11e22f20f89', '/wireless-mouse.webp', '/wireless-mouse-side.webp'],
+  ['Lámpara de escritorio', '19777d45-8fe4-4a48-ba25-ff41b30c5816', '/desk-lamp.webp', '/desk-lamp-side.webp'],
+  ['Teclado compacto', '934c2c27-f973-43a1-b6e1-3feb06800c0c', '/compact-keyboard.webp', '/compact-keyboard-side.webp'],
+  ['Batería externa', '2f5bea3c-9169-4172-a395-6afa0448009a', '/power-bank.webp', '/power-bank-side.webp'],
+  ['Soporte para teléfono', '14746114-cb12-446c-8386-3c7bce2bd966', '/phone-stand.webp', '/phone-stand-side.webp'],
+])('%s offers two distinct gallery images', async (productName, productId, first, second) => {
+  const user = userEvent.setup()
+  render(<ProductGallery productId={productId} productName={productName} />)
+  const main = screen.getByRole('button', { name: `Abrir imagen de ${productName} en pantalla completa` })
+  expect(main.querySelector('img')).toHaveAttribute('src', first)
+  expect(screen.getByRole('button', { name: `Abrir foto 2 de ${productName} en pantalla completa` }).querySelector('img')).toHaveAttribute('src', second)
+  await user.click(screen.getByRole('button', { name: 'Imagen siguiente' }))
+  expect(main.querySelector('img')).toHaveAttribute('src', second)
+})
+
+test('opens an added product view fullscreen without fetching a different image', async () => {
+  const user = userEvent.setup()
+  render(<ProductGallery productId="2f5bea3c-9169-4172-a395-6afa0448009a" productName="Batería externa" />)
+  const thumbnail = screen.getByRole('button', { name: 'Abrir foto 2 de Batería externa en pantalla completa' })
+  await user.click(thumbnail)
+  const dialog = screen.getByRole('dialog', { name: 'Galería de imágenes de Batería externa' })
+  expect(within(dialog).getByRole('img', { name: 'Vista lateral de la batería portátil' })).toHaveAttribute('src', '/power-bank-side.webp')
+  await user.keyboard('{Escape}')
+  expect(thumbnail).toHaveFocus()
+})
+
 test('unknown product receives an honest fallback with no gallery controls', () => {
   render(<ProductGallery productId="unknown-product" productName="Otro producto" />)
   expect(screen.getByText('Imagen no disponible')).toBeVisible()
