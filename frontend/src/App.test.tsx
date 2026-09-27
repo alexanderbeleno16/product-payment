@@ -213,14 +213,51 @@ test('sorts a copy of the catalog by descending price and restores server order'
   const firstCard = () => screen.getAllByRole('article')[0]
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
 
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Ordenar productos' }), 'price-desc')
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
+  await user.click(sortTrigger)
+  const sortOptions = screen.getByRole('group', { name: 'Opciones de orden' })
+  expect(within(sortOptions).getByRole('button', { name: 'Orden predeterminado' })).toHaveAttribute('aria-pressed', 'true')
+  await user.click(within(sortOptions).getByRole('button', { name: 'Precio: mayor a menor' }))
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
+  expect(sortTrigger).toHaveFocus()
   expect(firstCard()).toHaveTextContent('Teclado mecánico compacto gris oscuro')
   expect(firstCard().querySelector('img')).toHaveAttribute('fetchpriority', 'high')
   expect(firstCard().querySelector('img')).toHaveAttribute('loading', 'eager')
   expect(screen.getAllByRole('article')[9]).toHaveTextContent('Soporte plegable para teléfono gris')
 
-  await user.selectOptions(screen.getByRole('combobox', { name: 'Ordenar productos' }), 'default')
+  await user.click(sortTrigger)
+  await user.click(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Orden predeterminado' }))
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
+})
+
+test('closes the sort choices on Escape or outside click without losing keyboard focus', async () => {
+  installApi()
+  const user = userEvent.setup()
+  renderCheckout()
+  await screen.findByRole('heading', { name: 'Explora nuestros productos' })
+
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  sortTrigger.focus()
+  await user.keyboard('{Enter}')
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'true')
+  await user.keyboard('{Escape}')
+  expect(sortTrigger).toHaveFocus()
+  expect(screen.queryByRole('group', { name: 'Opciones de orden' })).not.toBeInTheDocument()
+
+  await user.keyboard(' ')
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'true')
+  await user.click(document.body)
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
+
+  sortTrigger.focus()
+  await user.keyboard('{Enter}')
+  await user.tab()
+  expect(screen.getByRole('button', { name: 'Orden predeterminado' })).toHaveFocus()
+  await user.tab()
+  expect(screen.getByRole('button', { name: 'Precio: mayor a menor' })).toHaveFocus()
+  await user.tab()
+  expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('opens a product with the full-card native button using the keyboard', async () => {
@@ -230,12 +267,27 @@ test('opens a product with the full-card native button using the keyboard', asyn
 
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 2 })).toBeVisible()
   await user.tab()
-  expect(screen.getByRole('combobox', { name: 'Ordenar productos' })).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'ShopiFast: ir al catálogo' })).toHaveFocus()
+  await user.tab()
+  expect(screen.getByRole('button', { name: 'Ordenar productos' })).toHaveFocus()
   await user.tab()
   const firstCard = screen.getAllByRole('article')[0]
   expect(within(firstCard).getByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).toHaveFocus()
   await user.keyboard('{Enter}')
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toHaveFocus()
+})
+
+test('opens the catalog when the store mark or wordmark is activated from a product', async () => {
+  installApi()
+  const user = userEvent.setup()
+  renderCheckout()
+  await openProduct('Audífonos inalámbricos')
+
+  const brand = screen.getByRole('button', { name: 'ShopiFast: ir al catálogo' })
+  expect(brand).toContainElement(screen.getByText('ShopiFast'))
+  await user.click(brand)
+  expect(await screen.findByRole('heading', { name: 'Explora nuestros productos' })).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).toBeVisible()
 })
 
 test('returns through the breadcrumb and selects a new product with reset quantity', async () => {

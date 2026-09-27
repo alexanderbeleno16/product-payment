@@ -1,4 +1,6 @@
 import '@fontsource/grand-hotel/latin-400.css'
+import { useAppDispatch } from '../app/hooks'
+import { catalogReturnRequested } from '../features/checkout/checkoutSlice'
 
 const steps = [
   'Producto',
@@ -9,10 +11,17 @@ const steps = [
 ] as const
 
 function CheckoutHeader({ step }: { step: 1 | 2 }) {
+  const dispatch = useAppDispatch()
+
   return (
     <header className="checkout-header">
       <div className="checkout-header__top">
-        <div className="brand">
+        <button
+          type="button"
+          className="brand"
+          aria-label="ShopiFast: ir al catálogo"
+          onClick={() => dispatch(catalogReturnRequested())}
+        >
           <img
             src="/brand-mark.webp"
             width="256"
@@ -20,7 +29,7 @@ function CheckoutHeader({ step }: { step: 1 | 2 }) {
             alt=""
           />
           <span className="brand__name">ShopiFast</span>
-        </div>
+        </button>
         {step > 1 && (
           <span className="step-pill">
             Paso {step} de 5 · {steps[step - 1]}
