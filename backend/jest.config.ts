@@ -23,6 +23,15 @@ const config: Config = {
     'libs/**/*.(t|j)s',
     'apps/**/*.(t|j)s',
   ],
+  // The brief requires more than 80%, so exactly 80 must fail.
+  coverageThreshold: {
+    global: {
+      statements: 80.01,
+      branches: 80.01,
+      functions: 80.01,
+      lines: 80.01,
+    },
+  },
   coverageDirectory: './coverage',
   testEnvironment: 'node',
 };
