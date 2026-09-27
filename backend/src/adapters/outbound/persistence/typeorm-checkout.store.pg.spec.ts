@@ -101,6 +101,12 @@ const input: CheckoutInput = {
       expect(await store.claimSubmission(transactions[0].reference)).toBe(
         false,
       );
+      const claimed = await store.findByIdempotencyKey(input.idempotencyKey);
+      expect(claimed).toMatchObject({
+        status: 'SUBMISSION_UNKNOWN',
+        providerTransactionId: null,
+      });
+      expect(claimed?.submissionStartedAt).toBeInstanceOf(Date);
     });
 
     it('returns the original quote after price and stock change, while a changed payload conflicts', async () => {
@@ -129,6 +135,62 @@ const input: CheckoutInput = {
         }),
       ).rejects.toBeInstanceOf(IdempotencyKeyTaken);
       expect(await dataSource.getRepository(CustomerEntity).count()).toBe(1);
+    });
+
+    it('persists only one conditional outcome after the durable claim', async () => {
+      const first = await start.execute(input);
+      if (!first.ok) throw new Error('Expected pending checkout');
+      await expect(
+        store.recordSubmissionOutcome(first.value.reference, {
+          kind: 'UNKNOWN',
+        }),
+      ).rejects.toThrow('Submission outcome could not be recorded');
+      expect(await store.claimSubmission(first.value.reference)).toBe(true);
+      const updated = await store.recordSubmissionOutcome(
+        first.value.reference,
+        { kind: 'ACCEPTED', providerTransactionId: 'provider-test-1' },
+      );
+      expect(updated).toMatchObject({
+        status: 'PENDING',
+        providerTransactionId: 'provider-test-1',
+      });
+      await expect(
+        store.recordSubmissionOutcome(first.value.reference, {
+          kind: 'REJECTED',
+        }),
+      ).rejects.toThrow('Submission outcome could not be recorded');
+      expect(await store.claimSubmission(first.value.reference)).toBe(false);
+      expect(
+        await dataSource.getRepository(ProductEntity).findOneByOrFail({
+          id: testProductId,
+        }),
+      ).toMatchObject({ stock: 4 });
+    });
+
+    it('persists an ambiguous submission without stock or delivery effects', async () => {
+      const first = await start.execute(input);
+      if (!first.ok) throw new Error('Expected pending checkout');
+      expect(await store.claimSubmission(first.value.reference)).toBe(true);
+      // A crash before any provider result is durably observable as unknown.
+      expect(await store.findByIdempotencyKey(input.idempotencyKey)).toMatchObject({
+        status: 'SUBMISSION_UNKNOWN',
+        providerTransactionId: null,
+      });
+      expect(await store.claimSubmission(first.value.reference)).toBe(false);
+      expect(
+        await store.recordSubmissionOutcome(first.value.reference, {
+          kind: 'UNKNOWN',
+        }),
+      ).toMatchObject({
+        status: 'SUBMISSION_UNKNOWN',
+        providerTransactionId: null,
+      });
+      expect(await store.claimSubmission(first.value.reference)).toBe(false);
+      expect(
+        await dataSource.getRepository(ProductEntity).findOneByOrFail({
+          id: testProductId,
+        }),
+      ).toMatchObject({ stock: 4 });
     });
   },
 );
