@@ -1,5 +1,5 @@
-import type { Product } from '../../application/product';
-import type { ProductReader } from '../../application/product-reader.port';
+import type { Product } from '../../../domain/product';
+import type { ProductReader } from '../../../application/product-reader.port';
 import { DatabaseConnection } from './database-connection';
 import { ProductEntity } from './product.entity';
 

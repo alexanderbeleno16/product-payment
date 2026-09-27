@@ -1,6 +1,6 @@
 import { DataSource } from 'typeorm';
-import type { CheckoutInput } from '../../application/checkout';
-import { StartCheckout } from '../../application/start-checkout';
+import type { CheckoutInput } from '../../../application/checkout';
+import { StartCheckout } from '../../../application/start-checkout';
 import { ProductEntity } from './product.entity';
 import { createDataSource } from './data-source';
 import type { DatabaseConnection } from './database-connection';
@@ -8,7 +8,7 @@ import { TransactionEntity } from './transaction.entity';
 import { CustomerEntity } from './customer.entity';
 import { TypeOrmCheckoutStore } from './typeorm-checkout.store';
 import { TypeOrmProductReader } from './typeorm-product.reader';
-import { IdempotencyKeyTaken } from '../../application/checkout-store.port';
+import { IdempotencyKeyTaken } from '../../../application/checkout-store.port';
 
 const testDatabaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
 const testProductId = 'd815b5c8-4458-4b77-8286-b2d523552959';

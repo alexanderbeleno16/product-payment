@@ -1,15 +1,15 @@
-import type { CheckoutQuote, CheckoutResult } from './checkout';
+import type { CheckoutQuote, PricingResult } from './checkout';
 import type { Product } from './product';
 
-// Demo policy: COP 2,000 base fee and COP 5,000 delivery fee, expressed in cents.
+// Demo policy, expressed in COP cents. The cap limits a single checkout.
 export const BASE_FEE_CENTS = 200_000;
 export const DELIVERY_FEE_CENTS = 500_000;
-const POSTGRES_INTEGER_MAX = 2_147_483_647;
+export const MAX_CHECKOUT_TOTAL_CENTS = 2_000_000_000;
 
 export function priceCheckout(
   product: Product,
   quantity: number,
-): CheckoutResult<CheckoutQuote> {
+): PricingResult<CheckoutQuote> {
   if (!Number.isSafeInteger(quantity) || quantity < 1) {
     return { ok: false, reason: 'INVALID_INPUT' };
   }
@@ -24,7 +24,7 @@ export function priceCheckout(
   if (
     !Number.isSafeInteger(totalCents) ||
     productAmountCents <= 0 ||
-    totalCents > POSTGRES_INTEGER_MAX
+    totalCents > MAX_CHECKOUT_TOTAL_CENTS
   ) {
     return { ok: false, reason: 'INVALID_INPUT' };
   }

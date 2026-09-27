@@ -4,9 +4,10 @@ import type {
   CheckoutResult,
   CheckoutTransaction,
 } from './checkout';
-import { priceCheckout } from './checkout-pricing';
+import { priceCheckout } from '../domain/checkout-pricing';
 import { IdempotencyKeyTaken, type CheckoutStore } from './checkout-store.port';
 import type { ProductReader } from './product-reader.port';
+import { isUuidV4 } from './uuid-v4';
 
 function normalize(input: CheckoutInput): CheckoutInput {
   return {
@@ -24,12 +25,8 @@ function normalize(input: CheckoutInput): CheckoutInput {
 
 function isValid(input: CheckoutInput): boolean {
   return (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-      input.idempotencyKey,
-    ) &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-      input.productId,
-    ) &&
+    isUuidV4(input.idempotencyKey) &&
+    isUuidV4(input.productId) &&
     Number.isSafeInteger(input.quantity) &&
     input.quantity > 0 &&
     input.customerEmail.length <= 254 &&

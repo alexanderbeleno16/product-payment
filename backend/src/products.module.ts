@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { GetProduct } from './application/get-product';
 import type { ProductReader } from './application/product-reader.port';
-import { DatabaseConnection } from './infrastructure/persistence/database-connection';
-import { DatabaseModule } from './infrastructure/persistence/database.module';
-import { TypeOrmProductReader } from './infrastructure/persistence/typeorm-product.reader';
-import { ProductsController } from './products.controller';
+import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
+import { DatabaseModule } from './adapters/outbound/persistence/database.module';
+import { TypeOrmProductReader } from './adapters/outbound/persistence/typeorm-product.reader';
+import { ProductsController } from './adapters/inbound/http/products.controller';
 
 export const PRODUCT_READER = Symbol('PRODUCT_READER');
 
