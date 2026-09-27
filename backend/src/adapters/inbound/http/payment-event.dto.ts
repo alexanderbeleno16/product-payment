@@ -6,6 +6,7 @@ import {
   ArrayUnique,
   Equals,
   IsArray,
+  IsDefined,
   IsInt,
   IsISO8601,
   IsObject,
@@ -52,6 +53,7 @@ export class PaymentEventDto {
   environment!: string;
 
   @ApiProperty({ type: () => EventSignatureDto })
+  @IsDefined()
   @ValidateNested()
   @Type(() => EventSignatureDto)
   signature!: EventSignatureDto;
