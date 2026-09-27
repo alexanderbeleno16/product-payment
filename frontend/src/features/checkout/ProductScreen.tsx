@@ -1,17 +1,33 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
 import {
+  catalogReturnRequested,
   cardEntryRequested,
-  CHECKOUT_PRODUCT_ID,
   loadProduct,
   loadQuote,
   quantityChanged,
 } from './checkoutSlice'
+import { getProductImage } from './productImages'
+
+function ProductBreadcrumb({ name }: { name: string }) {
+  const dispatch = useAppDispatch()
+  return (
+    <nav aria-label="Ruta de navegación" className="breadcrumb">
+      <button type="button" onClick={() => dispatch(catalogReturnRequested())}>
+        Catálogo
+      </button>
+      <span aria-hidden="true">/</span>
+      <span aria-current="page">{name}</span>
+    </nav>
+  )
+}
 
 function ProductScreen() {
   const dispatch = useAppDispatch()
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const focusedProductId = useRef<string | null>(null)
   const {
     productId,
     quantity,
@@ -24,22 +40,41 @@ function ProductScreen() {
   } = useAppSelector((state) => state.checkout)
 
   useEffect(() => {
+    if (!productId) return
     const request = dispatch(loadProduct(productId))
     return () => request.abort()
   }, [dispatch, productId])
 
   useEffect(() => {
-    if (productStatus !== 'ready' || !product || product.stock < quantity)
+    if (
+      !productId ||
+      productStatus !== 'ready' ||
+      !product ||
+      product.id !== productId ||
+      product.stock < quantity
+    )
       return
     const request = dispatch(loadQuote({ productId, quantity }))
     return () => request.abort()
   }, [dispatch, productId, productStatus, product, quantity])
+
+  useEffect(() => {
+    if (
+      productStatus === 'ready' &&
+      product?.id === productId &&
+      focusedProductId.current !== productId
+    ) {
+      titleRef.current?.focus()
+      focusedProductId.current = productId
+    }
+  }, [productStatus, product, productId])
 
   if (productStatus === 'idle' || productStatus === 'loading') {
     return (
       <>
         <CheckoutHeader step={1} />
         <main className="checkout-main">
+          <ProductBreadcrumb name="Producto" />
           <div className="state-panel" role="status">
             Cargando producto…
           </div>
@@ -53,13 +88,14 @@ function ProductScreen() {
       <>
         <CheckoutHeader step={1} />
         <main className="checkout-main">
+          <ProductBreadcrumb name="Producto" />
           <div className="state-panel" role="alert">
             <h1>Producto no disponible</h1>
             <p>{productError ?? 'No se pudo cargar este producto.'}</p>
             <button
               type="button"
               className="secondary-button"
-              onClick={() => void dispatch(loadProduct(productId))}
+              onClick={() => productId && void dispatch(loadProduct(productId))}
             >
               Volver a intentar
             </button>
@@ -70,45 +106,43 @@ function ProductScreen() {
   }
 
   const soldOut = product.stock === 0
-  const quoteReady = quoteStatus === 'ready' && quote?.quantity === quantity
-  const productName =
-    product.id === CHECKOUT_PRODUCT_ID
-      ? 'Audífonos inalámbricos'
-      : product.name
-  const productDescription =
-    product.id === CHECKOUT_PRODUCT_ID
-      ? 'Audífonos inalámbricos de diadema'
-      : product.description
+  const quoteReady =
+    quoteStatus === 'ready' &&
+    quote?.quantity === quantity &&
+    quote.productId === productId
+  const image = getProductImage(product.id)
 
   return (
     <>
       <CheckoutHeader step={1} />
       <main className="checkout-main">
+        <ProductBreadcrumb name={product.name} />
         <div className="product-layout">
           <section className="product-media" aria-label="Imagen del producto">
-            {!soldOut && (
-              <span className="stock-badge">
-                {product.stock}{' '}
-                {product.stock === 1
-                  ? 'unidad disponible'
-                  : 'unidades disponibles'}
-              </span>
+            {image ? (
+              <img
+                src={image.src}
+                width="768"
+                height="768"
+                alt={image.alt}
+                fetchPriority="high"
+                decoding="async"
+              />
+            ) : (
+              <span>Imagen no disponible</span>
             )}
-            <img
-              src="/wireless-headphones.webp"
-              width="768"
-              height="768"
-              alt="Audífonos inalámbricos negros de diadema"
-              fetchPriority="high"
-              decoding="async"
-            />
           </section>
 
           <section className="product-card" aria-labelledby="product-title">
             <div className="product-card__intro">
               <p className="eyebrow">Producto seleccionado</p>
-              <h1 id="product-title">{productName}</h1>
-              <p className="product-description">{productDescription}</p>
+              <h1 id="product-title" ref={titleRef} tabIndex={-1}>{product.name}</h1>
+              <p className="product-description">{product.description}</p>
+              <p className={`stock-badge${soldOut ? ' stock-badge--empty' : ''}`}>
+                {soldOut
+                  ? 'Agotado'
+                  : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
+              </p>
             </div>
 
             <div className="purchase-row">
@@ -144,13 +178,6 @@ function ProductScreen() {
               </div>
             </div>
 
-            <div className="calculation" aria-live="polite">
-              <span>Cálculo del producto</span>
-              <span>
-                {quantity} × {formatMoney(product.priceCents)}
-              </span>
-            </div>
-
             {soldOut && (
               <p className="inline-message" role="status">
                 Producto agotado. No puedes continuar con la compra.
@@ -167,7 +194,7 @@ function ProductScreen() {
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() => void dispatch(loadProduct(productId))}
+                  onClick={() => productId && void dispatch(loadProduct(productId))}
                 >
                   Actualizar disponibilidad
                 </button>

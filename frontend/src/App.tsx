@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from './app/hooks'
 import CheckoutHeader from './components/CheckoutHeader'
+import CatalogScreen from './features/checkout/CatalogScreen'
 import ProductScreen from './features/checkout/ProductScreen'
 import { productReturnRequested } from './features/checkout/checkoutSlice'
 import './App.css'
@@ -37,5 +38,6 @@ function CardPlaceholder() {
 
 export default function App() {
   const step = useAppSelector((state) => state.checkout.step)
+  if (step === 'catalog') return <CatalogScreen />
   return step === 'product' ? <ProductScreen /> : <CardPlaceholder />
 }

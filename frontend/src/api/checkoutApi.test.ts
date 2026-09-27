@@ -1,8 +1,8 @@
-import { ApiError, getProduct, getQuote } from './checkoutApi'
-import { CHECKOUT_PRODUCT_ID } from '../features/checkout/checkoutSlice'
+import { ApiError, getProduct, getProducts, getQuote } from './checkoutApi'
+import { HEADPHONES_PRODUCT_ID } from '../features/checkout/productImages'
 
 const product = {
-  id: CHECKOUT_PRODUCT_ID,
+  id: HEADPHONES_PRODUCT_ID,
   name: 'Wireless Headphones',
   description: 'Over-ear wireless headphones',
   currency: 'COP',
@@ -31,10 +31,27 @@ test('reads the seeded product with no browser cache', async () => {
   fetchMock.mockResolvedValue(response(product))
   const signal = new AbortController().signal
 
-  await expect(getProduct(CHECKOUT_PRODUCT_ID, signal)).resolves.toEqual(
+  await expect(getProduct(HEADPHONES_PRODUCT_ID, signal)).resolves.toEqual(
     product,
   )
-  expect(fetchMock).toHaveBeenCalledWith(`/products/${CHECKOUT_PRODUCT_ID}`, {
+  expect(fetchMock).toHaveBeenCalledWith(`/products/${HEADPHONES_PRODUCT_ID}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  })
+})
+
+test('reads the product catalog and rejects malformed list responses', async () => {
+  const fetchMock = jest.mocked(fetch)
+  const signal = new AbortController().signal
+  fetchMock.mockResolvedValueOnce(response([product]))
+  fetchMock.mockResolvedValueOnce(response({ products: [product] }))
+  fetchMock.mockResolvedValueOnce(response([{ ...product, stock: -1 }]))
+
+  await expect(getProducts(signal)).resolves.toEqual([product])
+  await expect(getProducts(signal)).rejects.toThrow('Invalid product list response')
+  await expect(getProducts(signal)).rejects.toThrow('Invalid product list response')
+  expect(fetchMock).toHaveBeenCalledWith('/products', {
     signal,
     headers: { Accept: 'application/json' },
     cache: 'no-store',
@@ -45,7 +62,7 @@ test('requests the quote for the selected quantity and rejects mismatched data',
   const fetchMock = jest.mocked(fetch)
   fetchMock.mockResolvedValue(
     response({
-      productId: CHECKOUT_PRODUCT_ID,
+      productId: HEADPHONES_PRODUCT_ID,
       quantity: 1,
       currency: 'COP',
       unitPriceCents: 12_990_000,
@@ -57,11 +74,11 @@ test('requests the quote for the selected quantity and rejects mismatched data',
   )
   const signal = new AbortController().signal
 
-  await expect(getQuote(CHECKOUT_PRODUCT_ID, 2, signal)).rejects.toThrow(
+  await expect(getQuote(HEADPHONES_PRODUCT_ID, 2, signal)).rejects.toThrow(
     'Invalid quote response',
   )
   expect(fetchMock).toHaveBeenCalledWith(
-    `/checkout/quote?productId=${CHECKOUT_PRODUCT_ID}&quantity=2`,
+    `/checkout/quote?productId=${HEADPHONES_PRODUCT_ID}&quantity=2`,
     expect.objectContaining({ signal, cache: 'no-store' }),
   )
 })
@@ -76,10 +93,10 @@ test('rejects malformed product and HTTP errors without exposing response bodies
     response({ details: 'internal diagnostic' }, 503),
   )
 
-  await expect(getProduct(CHECKOUT_PRODUCT_ID, signal)).rejects.toThrow(
+  await expect(getProduct(HEADPHONES_PRODUCT_ID, signal)).rejects.toThrow(
     'Invalid product response',
   )
-  await expect(getProduct(CHECKOUT_PRODUCT_ID, signal)).rejects.toEqual(
+  await expect(getProduct(HEADPHONES_PRODUCT_ID, signal)).rejects.toEqual(
     new ApiError(503),
   )
 })
@@ -90,6 +107,6 @@ test('rejects a valid product response for a different requested ID', async () =
   )
 
   await expect(
-    getProduct(CHECKOUT_PRODUCT_ID, new AbortController().signal),
+    getProduct(HEADPHONES_PRODUCT_ID, new AbortController().signal),
   ).rejects.toThrow('Invalid product response')
 })

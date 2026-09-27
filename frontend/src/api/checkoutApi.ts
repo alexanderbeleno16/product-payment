@@ -84,6 +84,13 @@ export async function getProduct(
   return data
 }
 
+export async function getProducts(signal: AbortSignal): Promise<Product[]> {
+  const data = await readJson('/products', signal)
+  if (!Array.isArray(data) || !data.every(isProduct))
+    throw new Error('Invalid product list response')
+  return data
+}
+
 export async function getQuote(
   productId: string,
   quantity: number,
