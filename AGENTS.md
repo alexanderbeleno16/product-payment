@@ -5,7 +5,7 @@
 - This repository contains a React + TypeScript SPA in `frontend/` and a NestJS + TypeScript API in `backend/`.
 - Keep project skills only in `.agents/skills/<skill-name>/SKILL.md`. Use `.atl/skill-registry.md` as an index; each `SKILL.md` is authoritative.
 - Load only skills matching the current task. Do not copy project skills into a user or global directory.
-- Treat payment-provider integration and AWS deployment as later decisions, not established implementations. PostgreSQL and TypeORM now back the read-only product API; checkout and payment persistence remain future work.
+- PostgreSQL and TypeORM back product reads and local PENDING checkout persistence. A sandbox payment-initiation adapter and local OpenAPI contract are implemented and tested with controlled fakes; live sandbox verification and AWS deployment remain pending.
 - Refer to the payment provider as **Empresa innombrable** in every tracked or published artifact. A local-only skill may use the original documentation, but its entire directory is Git-ignored and must never be staged or published.
 
 ## Project skill routing

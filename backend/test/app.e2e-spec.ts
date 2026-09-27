@@ -4,6 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PRODUCT_READER } from '../src/products.module';
+import { CONSENT_TERMS_READER, PAYMENT_GATEWAY } from '../src/checkout.tokens';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -14,6 +15,10 @@ describe('AppController (e2e)', () => {
     })
       .overrideProvider(PRODUCT_READER)
       .useValue({ findById: jest.fn() })
+      .overrideProvider(CONSENT_TERMS_READER)
+      .useValue({ getCurrent: jest.fn() })
+      .overrideProvider(PAYMENT_GATEWAY)
+      .useValue({ submit: jest.fn() })
       .compile();
 
     app = moduleFixture.createNestApplication();

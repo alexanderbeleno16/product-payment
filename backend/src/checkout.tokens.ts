@@ -1,0 +1,2 @@
+export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
+export const CONSENT_TERMS_READER = Symbol('CONSENT_TERMS_READER');

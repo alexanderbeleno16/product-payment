@@ -1,13 +1,14 @@
-import type { DataSource } from 'typeorm';
-import type { Product } from '../../application/product';
-import type { ProductReader } from '../../application/product-reader.port';
+import type { Product } from '../../../domain/product';
+import type { ProductReader } from '../../../application/product-reader.port';
+import { DatabaseConnection } from './database-connection';
 import { ProductEntity } from './product.entity';
 
 export class TypeOrmProductReader implements ProductReader {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly connection: DatabaseConnection) {}
 
   async findById(id: string): Promise<Product | null> {
-    const entity = await this.dataSource
+    const dataSource = await this.connection.get();
+    const entity = await dataSource
       .getRepository(ProductEntity)
       .findOneBy({ id });
 
@@ -23,11 +24,5 @@ export class TypeOrmProductReader implements ProductReader {
       priceCents: entity.priceCents,
       stock: entity.stock,
     };
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    if (this.dataSource.isInitialized) {
-      await this.dataSource.destroy();
-    }
   }
 }

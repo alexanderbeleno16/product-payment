@@ -4,8 +4,8 @@ These instructions apply to `backend/` and its descendants. Inherit the reposito
 
 ## Current baseline
 
-- The application uses NestJS + TypeScript with CommonJS output and Jest. PostgreSQL and TypeORM back the read-only product endpoint through an application-owned port; payment integration and deployment adapters are not implemented.
-- Keep the product-read boundary intact and do not present planned checkout behavior as implemented. Verify installed Nest and TypeORM versions before adopting version-sensitive APIs.
+- The application uses NestJS + TypeScript with CommonJS output and Jest. PostgreSQL and TypeORM back product reads and local PENDING checkout persistence through application-owned ports. Sandbox payment initiation and local OpenAPI are implemented; live sandbox verification, payment finalization, and deployment remain pending.
+- Keep the product-read boundary intact and distinguish implemented checkout initiation from planned payment finalization. Verify installed Nest and TypeORM versions before adopting version-sensitive APIs.
 
 ## Working rules
 
