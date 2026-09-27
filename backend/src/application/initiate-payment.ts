@@ -3,6 +3,11 @@ import type { CheckoutStore } from './checkout-store.port';
 import type { PaymentCredentials, PaymentGateway } from './payment-gateway.port';
 import { StartCheckout } from './start-checkout';
 
+export interface PaymentConsent {
+  readonly acceptsEndUserPolicy: boolean;
+  readonly acceptsPersonalDataAuthorization: boolean;
+}
+
 export class InitiatePayment {
   constructor(
     private readonly startCheckout: StartCheckout,
@@ -13,12 +18,15 @@ export class InitiatePayment {
   async execute(
     input: CheckoutInput,
     credentials: PaymentCredentials,
+    consent: PaymentConsent,
   ): Promise<CheckoutResult<CheckoutTransaction>> {
     // A missing transient credential must not leave an unusable PENDING row.
     if (
       !credentials.cardToken?.trim() ||
       !credentials.acceptanceToken?.trim() ||
-      !credentials.personalDataToken?.trim()
+      !credentials.personalDataToken?.trim() ||
+      consent?.acceptsEndUserPolicy !== true ||
+      consent.acceptsPersonalDataAuthorization !== true
     ) {
       return { ok: false, reason: 'INVALID_INPUT' };
     }
