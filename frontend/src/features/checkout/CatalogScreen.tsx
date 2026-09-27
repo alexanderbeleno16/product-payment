@@ -31,7 +31,7 @@ function CatalogScreen() {
       <CheckoutHeader step={1} />
       <main className="checkout-main catalog-main">
         <div className="catalog-heading">
-          <p className="eyebrow">ShopiFast</p>
+          <p className="eyebrow">Catálogo</p>
           <h1 ref={titleRef} tabIndex={-1}>Explora nuestros productos</h1>
           <p>Elige un producto para continuar con una compra rápida y sencilla.</p>
         </div>
