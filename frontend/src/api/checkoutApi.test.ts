@@ -1,4 +1,4 @@
-import { ApiError, getProduct, getProducts, getQuote } from './checkoutApi'
+import { ApiError, getConsentTerms, getProduct, getProducts, getQuote } from './checkoutApi'
 import { HEADPHONES_PRODUCT_ID } from '../features/checkout/productImages'
 
 const product = {
@@ -109,4 +109,24 @@ test('rejects a valid product response for a different requested ID', async () =
   await expect(
     getProduct(HEADPHONES_PRODUCT_ID, new AbortController().signal),
   ).rejects.toThrow('Invalid product response')
+})
+
+test('reads both current consent documents and rejects malformed or insecure links', async () => {
+  const terms = {
+    publicKey: 'pub_test_fixture_only',
+    endUserPolicy: { token: 'policy-token', permalink: 'https://example.com/policy' },
+    personalDataAuthorization: { token: 'data-token', permalink: 'https://example.com/data' },
+  }
+  const fetchMock = jest.mocked(fetch)
+  fetchMock.mockResolvedValueOnce(response(terms))
+  fetchMock.mockResolvedValueOnce(response({ ...terms, endUserPolicy: { ...terms.endUserPolicy, permalink: 'javascript:alert(1)' } }))
+  fetchMock.mockResolvedValueOnce(response({ ...terms, personalDataAuthorization: { ...terms.personalDataAuthorization, token: '' } }))
+
+  const signal = new AbortController().signal
+  await expect(getConsentTerms(signal)).resolves.toEqual(terms)
+  await expect(getConsentTerms(signal)).rejects.toThrow('Invalid consent response')
+  await expect(getConsentTerms(signal)).rejects.toThrow('Invalid consent response')
+  expect(fetchMock).toHaveBeenCalledWith('/checkout/consents', {
+    signal, headers: { Accept: 'application/json' }, cache: 'no-store',
+  })
 })

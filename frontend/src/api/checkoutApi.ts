@@ -20,6 +20,17 @@ export interface CheckoutQuote {
   totalCents: number
 }
 
+export interface ConsentDocument {
+  token: string
+  permalink: string
+}
+
+export interface ConsentTerms {
+  publicKey: string
+  endUserPolicy: ConsentDocument
+  personalDataAuthorization: ConsentDocument
+}
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -64,6 +75,26 @@ function isCheckoutQuote(value: unknown): value is CheckoutQuote {
   )
 }
 
+function isConsentDocument(value: unknown): value is ConsentDocument {
+  if (!isRecord(value) || typeof value.token !== 'string' ||
+    value.token.length === 0 || value.token.length > 1024 ||
+    typeof value.permalink !== 'string') return false
+  try {
+    const url = new URL(value.permalink)
+    return url.protocol === 'https:' && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+function isConsentTerms(value: unknown): value is ConsentTerms {
+  return isRecord(value) &&
+    typeof value.publicKey === 'string' &&
+    /^pub_[a-z]+_[A-Za-z0-9_-]+$/.test(value.publicKey) &&
+    isConsentDocument(value.endUserPolicy) &&
+    isConsentDocument(value.personalDataAuthorization)
+}
+
 async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     signal,
@@ -105,5 +136,11 @@ export async function getQuote(
   ) {
     throw new Error('Invalid quote response')
   }
+  return data
+}
+
+export async function getConsentTerms(signal: AbortSignal): Promise<ConsentTerms> {
+  const data = await readJson('/checkout/consents', signal)
+  if (!isConsentTerms(data)) throw new Error('Invalid consent response')
   return data
 }
