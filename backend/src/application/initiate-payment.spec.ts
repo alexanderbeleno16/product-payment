@@ -114,6 +114,48 @@ describe('InitiatePayment', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('does not claim or submit when checkout rejects unavailable stock', async () => {
+    findById.mockResolvedValueOnce({
+      id: input.productId,
+      name: 'Demo product',
+      description: 'Demo',
+      currency: 'COP',
+      priceCents: 1_000_000,
+      stock: 0,
+    });
+
+    expect(await initiate.execute(input, credentials)).toEqual({
+      ok: false,
+      reason: 'INSUFFICIENT_STOCK',
+    });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('returns the current transaction without submitting after losing the claim', async () => {
+    claimSubmission.mockImplementationOnce(async () => {
+      saved = {
+        ...saved!,
+        status: 'SUBMISSION_UNKNOWN',
+        submissionStartedAt: new Date('2026-09-26T00:01:00Z'),
+      };
+      return false;
+    });
+
+    const result = await initiate.execute(input, credentials);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: 'SUBMISSION_UNKNOWN',
+        idempotencyKey: input.idempotencyKey,
+      },
+    });
+    expect(createPending).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+    expect(recordSubmissionOutcome).not.toHaveBeenCalled();
+  });
+
   it('persists PENDING before one submission and replays without resubmitting', async () => {
     const first = await initiate.execute(input, credentials);
     expect(first).toMatchObject({
