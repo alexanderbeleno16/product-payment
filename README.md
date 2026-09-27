@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend implements product reads, idempotent PENDING checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local payment/fulfillment status reads, and an operator-only known-ID reconciliation command. See the [backend setup and API contract](backend/README.md) and the [Postman collection](docs/product-payment.postman_collection.json) for the implemented buyer-facing HTTP requests. The collection is a repository artifact, not a hosted API URL; its checkout request requires locally supplied transient tokens and must never be exported with credentials. These backend paths have fake and PostgreSQL tests; live final approval, a deployed callback, the frontend checkout, and AWS deployment remain unverified or unimplemented. The diagrams show the intended full solution; annotations below distinguish current backend behavior from proposed UI and deployment.
+This repository contains a React/Vite SPA and a NestJS backend. The SPA currently offers a ten-product demo catalog, breadcrumb navigation, one selected product at a time, quantity and server-priced quote, and a two-view image gallery with a full-screen lightbox. Card/delivery entry, payment tokenization, summary, final status, and return to refreshed stock remain frontend work. The backend implements product listing and by-ID reads, idempotent PENDING checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local payment/fulfillment status reads, and an operator-only known-ID reconciliation command. See the [frontend setup](frontend/README.md), [backend setup and API contract](backend/README.md), and [Postman collection](docs/product-payment.postman_collection.json). The collection is a repository artifact, not a hosted API URL; its checkout request requires locally supplied transient tokens and must never be exported with credentials. Backend paths have fake tests and conditional PostgreSQL tests; live final approval, a deployed callback, the complete browser checkout, and AWS deployment remain unverified or unimplemented. The diagrams show the intended full solution; annotations below distinguish implemented behavior from proposed UI and deployment.
 
 ## 1. Application architecture (proposed)
 
@@ -35,11 +35,13 @@ PostgreSQL and TypeORM implement product reads, PENDING checkout persistence, an
 
 ## 2. Buyer journey (proposed)
 
-The five screens follow the technical brief. Card entry is a modal within the second screen, not an extra screen. Card and delivery fields must be validated. The buyer chooses a quantity; the server remains authoritative for price, fees, stock, and payment status.
+The optional catalog is an added way to choose one of ten seeded products; it is not a cart or an extra checkout step. The required journey still has five steps for one selected product. Card entry is a modal within the second step, not an extra step. Card and delivery fields must be validated. The buyer chooses a quantity; the server remains authoritative for price, fees, stock, and payment status.
 
 ```mermaid
 flowchart LR
+    Catalog["Optional catalog<br/>Choose one seeded product"] --> Product
     Product["1. Product<br/>Select quantity"] --> Details["2. Card and delivery details<br/>Card modal"]
+    Product -->|Breadcrumb back| Catalog
     Details --> Summary["3. Summary<br/>Amounts, fees, and backdrop pay button"]
     Summary --> Status["4. Final status<br/>Confirmed, rejected, or pending"]
     Status -->|Approved and fulfilled: reduced stock| Updated["5. Product page<br/>Show current stock"]
@@ -53,7 +55,7 @@ After a refresh, only non-sensitive checkout progress may be restored. Card deta
 
 ## 3. Payment and fulfillment sequence (proposed)
 
-The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The frontend journey, deployed callback, and live final approval remain pending. Bounded browser polling, when implemented, will read **our local API state** only. Initial payment submission currently accepts only a matching `201`/`PENDING`; a terminal initiation response is not interpreted as confirmed success.
+The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The frontend catalog and product selection are implemented; the card-to-status browser journey, deployed callback, and live final approval remain pending. Bounded browser polling, when implemented, will read **our local API state** only. Initial payment submission currently accepts only a matching `201`/`PENDING`; a terminal initiation response is not interpreted as confirmed success.
 
 ```mermaid
 sequenceDiagram
@@ -63,7 +65,21 @@ sequenceDiagram
     participant API as NestJS API
     participant DB as Database
 
-    Buyer->>SPA: Choose product, quantity, delivery, and card
+    opt Browse the optional ten-product catalog
+        SPA->>API: GET /products
+        API->>DB: Read current products and stock
+        DB-->>API: Product list
+        API-->>SPA: Product list
+        Buyer->>SPA: Choose one product
+    end
+    SPA->>API: GET /products/:id for the selected product
+    API->>DB: Read current product and stock
+    DB-->>API: Current product detail
+    API-->>SPA: Current product detail
+    Buyer->>SPA: Choose quantity for one product
+    SPA->>API: GET /checkout/quote
+    API-->>SPA: Server-priced quote
+    Buyer->>SPA: Enter delivery and card details
     SPA->>SPA: Validate card format and delivery fields
     SPA->>Provider: Tokenize card in browser
     Provider-->>SPA: Payment token
@@ -128,7 +144,9 @@ External payment and local database writes cannot be one transaction. The persis
 
 The brief groups stock and delivery updates under both completed and failed outcomes. This proposal deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
 
-The implemented HTTP surface includes `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. The status lookup requires the original idempotency key and returns only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. The [Postman collection](docs/product-payment.postman_collection.json) contains the five buyer-facing requests; the signed event is provider-to-server and deliberately not represented as a manually runnable request. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs. Neither URL is public. The [backend README](backend/README.md#verify) records dated backend Jest coverage with and without real PostgreSQL; frontend Jest coverage and public deployment remain pending, so challenge-wide coverage is not yet established.
+The implemented HTTP surface includes read-only `GET /products` (an array with current stock) and `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. The status lookup requires the original idempotency key and returns only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. The [Postman collection](docs/product-payment.postman_collection.json) contains the six buyer-facing requests; the signed event is provider-to-server and deliberately not represented as a manually runnable request. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs. Neither URL is public.
+
+Local Jest evidence on 2026-09-27: `cd frontend && npm run test:coverage` passed 38 tests with 92.87% statements, 86.44% branches, 96.34% functions, and 94.35% lines. With `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 125 tests and measured 90.56% statements, 85.13% branches, 86.82% functions, and 91.27% lines. The PostgreSQL-backed E2E command passed 28 tests. These measurements cover the current partial browser flow and backend; they do not establish live terminal-provider behavior or a deployed callback. Without a configured test database, the PostgreSQL test suites are skipped and backend coverage is lower.
 
 Backend tests cover duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local rollback on delivery insertion failure. Unit tests cover use-case policy; PostgreSQL integration tests prove atomicity and uniqueness. Live terminal-provider behavior and deployed callback remain unverified. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
 
@@ -192,11 +210,11 @@ erDiagram
     }
 ```
 
-The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. The separate image proposal below is not part of this schema.
+The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. Static frontend images are not part of this schema.
 
-## Image handling (proposed)
+## Image handling (current)
 
-The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by frontend configuration and served as a static asset, without a database image column or upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
+The SPA serves two optimized local WebP views for each of ten seeded products from `frontend/public/`. `frontend/public/brand-mark.webp` supplies the store mark. A frontend-only [product ID-to-image map](frontend/src/features/checkout/productImages.ts) associates these static assets with known seed IDs; PostgreSQL has no image column or upload service, and the product API does not return image URLs. Unknown products show an image-unavailable state, not an unrelated photo. The catalog prioritizes its first two images and lazy-loads later ones; the selected product shows a gallery with thumbnail selection and a full-screen lightbox. Local browser checks covered ten cards and 320–1280px layouts against NestJS and PostgreSQL, but no production image-loading latency guarantee is claimed.
 
 ## 5. AWS deployment topology (proposed)
 

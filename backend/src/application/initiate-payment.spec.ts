@@ -40,7 +40,7 @@ describe('InitiatePayment', () => {
   const recordSubmissionOutcome = jest.fn();
   const submit = jest.fn();
 
-  const products: ProductReader = { findById };
+  const products: ProductReader = { findAll: jest.fn(), findById };
   const store: CheckoutStore = {
     findByIdempotencyKey,
     findByReference: jest.fn(),

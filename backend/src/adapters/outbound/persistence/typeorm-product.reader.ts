@@ -6,6 +6,14 @@ import { ProductEntity } from './product.entity';
 export class TypeOrmProductReader implements ProductReader {
   constructor(private readonly connection: DatabaseConnection) {}
 
+  async findAll(): Promise<Product[]> {
+    const dataSource = await this.connection.get();
+    const entities = await dataSource.getRepository(ProductEntity).find({
+      order: { name: 'ASC', id: 'ASC' },
+    });
+    return entities.map((entity) => this.toProduct(entity));
+  }
+
   async findById(id: string): Promise<Product | null> {
     const dataSource = await this.connection.get();
     const entity = await dataSource
@@ -16,6 +24,10 @@ export class TypeOrmProductReader implements ProductReader {
       return null;
     }
 
+    return this.toProduct(entity);
+  }
+
+  private toProduct(entity: ProductEntity): Product {
     return {
       id: entity.id,
       name: entity.name,

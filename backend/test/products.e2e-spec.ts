@@ -5,6 +5,7 @@ import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import type { ProductReader } from '../src/application/product-reader.port';
 import { PRODUCT_READER } from '../src/products.module';
+import { configureOpenApi } from '../src/openapi';
 import {
   CONSENT_TERMS_READER,
   PAYMENT_GATEWAY,
@@ -24,10 +25,12 @@ const product = {
 describe('ProductsController (e2e)', () => {
   let app: INestApplication<App>;
   const findById = jest.fn();
-  const reader: ProductReader = { findById };
+  const findAll = jest.fn();
+  const reader: ProductReader = { findAll, findById };
 
   beforeEach(async () => {
     findById.mockResolvedValue(product);
+    findAll.mockResolvedValue([product]);
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -44,6 +47,7 @@ describe('ProductsController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureOpenApi(app);
     await app.init();
   });
 
@@ -58,6 +62,32 @@ describe('ProductsController (e2e)', () => {
       .expect(200)
       .expect(product);
     expect(findById).toHaveBeenCalledWith(product.id);
+  });
+
+  it('GET /products returns the catalog via the shared reader port', async () => {
+    await request(app.getHttpServer())
+      .get('/products')
+      .expect(200)
+      .expect([product]);
+    expect(findAll).toHaveBeenCalledTimes(1);
+    expect(findById).not.toHaveBeenCalled();
+  });
+
+  it('GET /products returns an empty list when no products are available', async () => {
+    findAll.mockResolvedValue([]);
+    await request(app.getHttpServer()).get('/products').expect(200).expect([]);
+  });
+
+  it('documents the catalog response as an array in OpenAPI', async () => {
+    const { body: document } = await request(app.getHttpServer())
+      .get('/api-json')
+      .expect(200);
+    expect(
+      document.paths['/products'].get.responses['200'].content[
+        'application/json'
+      ].schema,
+    ).toMatchObject({ type: 'array' });
+    expect(document.paths['/products/{id}'].get.responses['200']).toBeDefined();
   });
 
   it('GET /products/:id returns 404 when absent', async () => {
