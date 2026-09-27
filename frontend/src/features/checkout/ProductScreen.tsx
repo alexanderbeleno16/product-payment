@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
 import { formatMoney } from '../../lib/formatMoney'
+import ProductGallery from './ProductGallery'
 import {
   catalogReturnRequested,
   cardEntryRequested,
@@ -9,7 +10,6 @@ import {
   loadQuote,
   quantityChanged,
 } from './checkoutSlice'
-import { getProductImage } from './productImages'
 
 function ProductBreadcrumb({ name }: { name: string }) {
   const dispatch = useAppDispatch()
@@ -110,7 +110,6 @@ function ProductScreen() {
     quoteStatus === 'ready' &&
     quote?.quantity === quantity &&
     quote.productId === productId
-  const image = getProductImage(product.id)
 
   return (
     <>
@@ -118,20 +117,7 @@ function ProductScreen() {
       <main className="checkout-main">
         <ProductBreadcrumb name={product.name} />
         <div className="product-layout">
-          <section className="product-media" aria-label="Imagen del producto">
-            {image ? (
-              <img
-                src={image.src}
-                width="768"
-                height="768"
-                alt={image.alt}
-                fetchPriority="high"
-                decoding="async"
-              />
-            ) : (
-              <span>Imagen no disponible</span>
-            )}
-          </section>
+          <ProductGallery productId={product.id} productName={product.name} />
 
           <section className="product-card" aria-labelledby="product-title">
             <div className="product-card__intro">
