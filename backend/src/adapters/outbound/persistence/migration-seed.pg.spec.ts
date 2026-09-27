@@ -68,20 +68,28 @@ const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
         ).toEqual([
           { name: 'CreateProducts1790380800000' },
           { name: 'CreateCheckout1790467200000' },
+          { name: 'CreateDeliveries1790553600000' },
         ]);
         expect(
           await migrated.query<
-            { products: string; customers: string; transactions: string }[]
+            {
+              products: string;
+              customers: string;
+              transactions: string;
+              deliveries: string;
+            }[]
           >(
             `SELECT to_regclass('products')::text AS products,
                     to_regclass('customers')::text AS customers,
-                    to_regclass('transactions')::text AS transactions`,
+                    to_regclass('transactions')::text AS transactions,
+                    to_regclass('deliveries')::text AS deliveries`,
           ),
         ).toEqual([
           {
             products: 'products',
             customers: 'customers',
             transactions: 'transactions',
+            deliveries: 'deliveries',
           },
         ]);
       } finally {
@@ -113,6 +121,14 @@ const headphonesId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
             id: headphonesId,
           }),
         ).toMatchObject({ stock: 3, priceCents: 12_990_000 });
+
+        await rollback.undoLastMigration();
+        expect(
+          await rollback.query("SELECT to_regclass('deliveries')"),
+        ).toEqual([{ to_regclass: null }]);
+        expect(
+          await rollback.query("SELECT to_regclass('transactions')"),
+        ).toEqual([{ to_regclass: 'transactions' }]);
 
         await rollback.undoLastMigration();
         expect(
