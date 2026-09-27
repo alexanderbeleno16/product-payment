@@ -6,6 +6,7 @@ import { SandboxPaymentStatusReader } from './adapters/outbound/payment/sandbox-
 import { PaymentEventController } from './adapters/inbound/http/payment-event.controller';
 import { PaymentEventVerifier } from './adapters/inbound/http/payment-event.verifier';
 import { ReceivePaymentEvent } from './application/receive-payment-event';
+import { ReconcileKnownPayment } from './application/reconcile-known-payment';
 import { FinalizeVerifiedPayment } from './application/finalize-verified-payment';
 import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
 import { TypeOrmCheckoutStore } from './adapters/outbound/persistence/typeorm-checkout.store';
@@ -65,6 +66,9 @@ describe('Nest checkout composition', () => {
         );
         expect(moduleRef.get(ReceivePaymentEvent)).toBeInstanceOf(
           ReceivePaymentEvent,
+        );
+        expect(moduleRef.get(ReconcileKnownPayment)).toBeInstanceOf(
+          ReconcileKnownPayment,
         );
         expect(moduleRef.get(FinalizeVerifiedPayment)).toBeInstanceOf(
           FinalizeVerifiedPayment,

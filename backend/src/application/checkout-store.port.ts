@@ -11,6 +11,8 @@ export interface NewPendingCheckout {
 
 export interface CheckoutStore {
   findByIdempotencyKey(key: string): Promise<CheckoutTransaction | null>;
+  /** Trusted server-side lookup; never expose as an unauthenticated buyer route. */
+  findByReference(reference: string): Promise<CheckoutTransaction | null>;
   createPending(command: NewPendingCheckout): Promise<CheckoutTransaction>;
   /** One durable claim per transaction; false means another request already claimed it. */
   claimSubmission(reference: string): Promise<boolean>;

@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend has PostgreSQL/TypeORM product and PENDING-checkout persistence, an idempotent sandbox-submission adapter, and HTTP routes for product reading, server-priced quotes, current consents, checkout initiation, and limited transaction-status lookup. See the [backend setup and API contract](backend/README.md). Provider confirmation, stock updates, delivery, frontend checkout, and deployment are **not implemented** yet. The diagrams below describe the intended complete solution, not the current runtime behavior.
+This repository contains a React/Vite frontend scaffold and a NestJS backend. The backend implements product reads, idempotent PENDING checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local payment/fulfillment status reads, and an operator-only known-ID reconciliation command. See the [backend setup and API contract](backend/README.md). These backend paths have fake and PostgreSQL tests; live final approval, a deployed callback, the frontend checkout, and AWS deployment remain unverified or unimplemented. The diagrams show the intended full solution; annotations below distinguish current backend behavior from proposed UI and deployment.
 
 ## 1. Application architecture (proposed)
 
@@ -31,7 +31,7 @@ flowchart LR
     PaymentAdapter -. implements .-> PaymentPort
 ```
 
-PostgreSQL and TypeORM implement product reads and PENDING checkout persistence. The application core owns product, checkout, payment-submission, and consent-reading ports; Nest HTTP and outbound adapters are composed at the edge. Implemented routes and current limitations are documented in the [backend README](backend/README.md). The remaining event/finalization contracts will be defined as checkout is completed. The core must not import NestJS, TypeORM, or payment-provider types.
+PostgreSQL and TypeORM implement product reads, PENDING checkout persistence, and atomic confirmed-payment/fulfillment effects. The application core owns checkout, payment-submission, status-reading, and finalization contracts; Nest HTTP and outbound adapters are composed at the edge. Signed-event ingress and an explicit operator reconciliation path are implemented; the browser journey is not. Implemented routes and limitations are documented in the [backend README](backend/README.md). The core must not import NestJS, TypeORM, or payment-provider types.
 
 ## 2. Buyer journey (proposed)
 
@@ -53,7 +53,7 @@ After a refresh, only non-sensitive checkout progress may be restored. Card deta
 
 ## 3. Payment and fulfillment sequence (proposed)
 
-The provider's verified outcome—not the browser or an HTTP timeout—must control fulfillment. The current API can submit a PENDING payment and read local status; it cannot yet verify final outcomes or fulfill an order. A signed provider event is the proposed primary finalization trigger, with explicit server-side reconciliation as fallback. Bounded browser polling would read **our local API state** only. If payment creation later returns a terminal outcome, the API must apply the same guarded finalization rules before responding. The remaining finalization paths below are proposed, not implemented.
+The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The frontend journey, deployed callback, and live final approval remain pending. Bounded browser polling, when implemented, will read **our local API state** only. Initial payment submission currently accepts only a matching `201`/`PENDING`; a terminal initiation response is not interpreted as confirmed success.
 
 ```mermaid
 sequenceDiagram
@@ -80,10 +80,9 @@ sequenceDiagram
         API->>DB: Claim unique key and save customer and PENDING transaction atomically
         API->>DB: Mark provider submission started before network call
         API->>Provider: Request sandbox payment with unique reference
-        alt Provider responds
-            Provider-->>API: Provider ID and initial status
+        alt Provider acknowledges PENDING
+            Provider-->>API: Provider ID and initial PENDING status
             API->>DB: Attach provider ID without downgrading a later state
-            API->>API: If terminal, apply the same guarded finalization
             API->>DB: Read latest local state after any racing event
             API-->>SPA: Transaction reference and current state
         else Outcome unknown after timeout
@@ -93,8 +92,10 @@ sequenceDiagram
     end
 
     Provider-->>API: Signed transaction update, possibly before payment response
-    API->>DB: Find the local transaction by reference
-    API->>API: Verify signature, environment, reference, amount, currency, and ID
+    API->>API: Verify event shape, environment, checksum, and signed ID
+    API->>Provider: GET transaction by signed ID with server-only key
+    Provider-->>API: Authoritative ID, reference, amount, currency, and status
+    API->>DB: Lock local transaction and bind authoritative facts
     alt Confirmed APPROVED and stock sufficient
         API->>DB: Atomically guard transition, decrement stock, create one delivery
         DB-->>API: Payment approved and fulfilled
@@ -107,13 +108,14 @@ sequenceDiagram
     end
 
     loop Bounded polling or after browser refresh
-        SPA->>API: GET local transaction status
+        SPA->>API: GET local transaction status with original key
         API->>DB: Read payment and fulfillment state only
         DB-->>API: Current state
         API-->>SPA: Current state without mutation
     end
 
-    opt Explicit reconciliation when an event was missed
+    opt Operator-only explicit reconciliation for a locally bound ID
+        API->>DB: Read one checkout by local reference
         API->>Provider: Fetch status by known provider ID server-side
         Provider-->>API: Current provider status
         API->>API: Apply the same guarded finalization use case
@@ -122,74 +124,79 @@ sequenceDiagram
 
 Idempotency has two boundaries. Repeating the same checkout key and canonical business-data fingerprint returns its original transaction, even if the product price later changes; reusing the key with different checkout data is a conflict. The fingerprint does not contain the transient payment token. A database unique constraint resolves concurrent first submissions, and a durable submission claim prevents concurrent requests from sending another charge. A timeout after sending and before receiving the provider ID remains **unknown**. A unique reference or duplicate-reference error does not prove that a second provider POST is safe. A signed event may recover the result by reference; otherwise reconcile through a documented provider capability or manual investigation, never an automatic blind retry. The payment token is transient input, not persisted checkout state.
 
-External payment and local database writes cannot be one transaction. The current persistence adapter atomically creates PENDING checkouts and durably claims one provider submission before network I/O; it does **not** implement finalization. The proposed finalization port would use one PostgreSQL transaction to guard the transaction row, conditionally decrement sufficient stock, enforce at most one delivery, and return a typed stock-conflict result. Duplicate or out-of-order events must not repeat effects. A provider success that cannot be persisted must remain eligible for reconciliation; event delivery alone is not an unlimited guarantee. A small backend reconciliation pass could check unresolved attempts with known provider IDs independently of the browser; attempts without an ID require a verified event or manual investigation unless a supported lookup is confirmed. Payment status and fulfillment status must remain distinct: an approved charge with unavailable stock must not claim a delivery. The implemented local status `GET` reads only; it must never trigger provider calls or fulfillment writes. Raw card data must never be stored in the application database or logs.
+External payment and local database writes cannot be one transaction. The persistence adapter atomically creates PENDING checkouts and durably claims one provider submission before network I/O. Finalization uses one PostgreSQL transaction to lock the checkout, bind authoritative facts, conditionally decrement sufficient stock, and enforce at most one delivery. Duplicate or out-of-order events cannot repeat effects. A provider success that cannot be persisted remains eligible for event retry or explicit reconciliation; event delivery alone is not an unlimited guarantee. The operator command reconciles one checkout with a known, locally bound provider ID independently of the browser; attempts without an ID require a verified event or manual investigation unless a supported lookup is confirmed. Payment and fulfillment status remain distinct: an approved charge with unavailable stock does not claim a delivery. The implemented local status `GET` reads only; it never triggers provider calls or fulfillment writes. Raw card data must never be stored in the application database or logs.
 
 The brief groups stock and delivery updates under both completed and failed outcomes. This proposal deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
 
-The implemented HTTP surface now includes `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, and `GET /transactions/:reference` (the generated scaffold's `GET /` remains). The signed event receiver, confirmed-status reconciliation, and fulfillment are still proposed. Customer and delivery data are managed through the PENDING checkout lifecycle, not exposed as public CRUD endpoints. The current status lookup requires the original idempotency key and returns only reference/status; stronger access control is needed before public deployment. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs; a **public** API documentation link remains pending deployment and verification.
+The implemented HTTP surface includes `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. The status lookup requires the original idempotency key and returns only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs; a **public** API documentation link remains pending deployment and verification.
 
-Planned verification includes duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local persistence failure after provider approval. Unit tests cover use-case policy; PostgreSQL integration tests must prove atomicity and uniqueness. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
+Backend tests cover duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local rollback on delivery insertion failure. Unit tests cover use-case policy; PostgreSQL integration tests prove atomicity and uniqueness. Live terminal-provider behavior and deployed callback remain unverified. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
 
-## 4. Conceptual data model (proposed)
+## 4. Current backend data model
 
-This is a business model, not a migration or a choice of database-specific types. A transaction records the selected product and a price/fee snapshot. Delivery details can be retained as non-card checkout data while payment is pending, but a **delivery record exists only after confirmed success**.
+This summarizes the implemented PostgreSQL schema. A transaction stores the selected product and price/fee snapshot. Recipient and address details remain on the customer row while payment is pending; a **delivery row exists only after confirmed approval with sufficient stock**.
 
 ```mermaid
 erDiagram
     PRODUCT ||--o{ TRANSACTION : purchased_in
     CUSTOMER ||--o{ TRANSACTION : places
     TRANSACTION ||--o| DELIVERY : creates_on_success
+    PRODUCT ||--o{ DELIVERY : item
+    CUSTOMER ||--o{ DELIVERY : recipient
 
     PRODUCT {
-        id id PK
+        uuid id PK
         string name
         string description
-        string image_path
-        money unit_price
+        string currency
+        int price_cents
         int stock
     }
 
     CUSTOMER {
-        id id PK
-        string name
+        uuid id PK
         string email
-        string phone
+        string recipient_name
+        string address_line
+        string city
     }
 
     TRANSACTION {
-        id id PK
-        id product_id FK
-        id customer_id FK
+        uuid id PK
+        uuid product_id FK
+        uuid customer_id FK
         string reference UK
-        string idempotency_key UK
+        uuid idempotency_key UK
         string request_fingerprint
         int quantity
-        money unit_price_snapshot
-        money base_fee
-        money delivery_fee
-        money total
-        string delivery_address_snapshot
-        string payment_status
+        string currency
+        int unit_price_cents
+        int product_amount_cents
+        int base_fee_cents
+        int delivery_fee_cents
+        int total_cents
+        string status
         string fulfillment_status
         string provider_transaction_id UK
-        datetime provider_submission_started_at
+        datetime submission_started_at
         datetime created_at
     }
 
     DELIVERY {
-        id id PK
-        id transaction_id FK, UK
-        string recipient_address
-        string status
+        uuid id PK
+        uuid transaction_id FK, UK
+        uuid customer_id FK
+        uuid product_id FK
+        int quantity
         datetime created_at
     }
 ```
 
-The authoritative price and stock live on the server. `money` and `id` denote concepts in this full-solution diagram; the current PostgreSQL migrations use integer COP cents and UUIDs for products, customers, and PENDING transactions. The local payment state distinguishes PENDING, unknown submission, and rejected submission, while approval/failure verification and fulfillment remain future work. A null provider ID is possible while an external submission is unresolved. The current schema has no delivery table or stock-decrement operation. Transaction reference and idempotency key already have database uniqueness; delivery uniqueness and finalization constraints remain implementation work.
+The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. The separate image proposal below is not part of this schema.
 
 ## Image handling (proposed)
 
-The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by an optional `image_path` and served as a static frontend asset, without an image-upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
+The brief evaluates images for fast rendering and staying within UI boundaries; it does not require a particular product photo or screenshot. We propose a product image referenced by frontend configuration and served as a static asset, without a database image column or upload service. Use an appropriately sized, compressed file, preserve aspect ratio, reserve layout space, and provide meaningful alternative text. Check the result at the brief's smallest reference viewport and across wider screens. Image sourcing and the exact format remain undecided.
 
 ## 5. AWS deployment topology (proposed)
 
