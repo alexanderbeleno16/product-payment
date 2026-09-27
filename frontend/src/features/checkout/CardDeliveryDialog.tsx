@@ -73,6 +73,11 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   function changeText(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.currentTarget
     const field = name as CardFormField
+    if (field === 'number') {
+      if (value.replace(/\D/g, '').length > 16) return
+      setValues((previous) => ({ ...previous, number: /^[\d -]*$/.test(value) ? value.replace(/[ -]/g, '') : value }))
+      return
+    }
     setValues((previous) => ({ ...previous, [field]: value }))
   }
 

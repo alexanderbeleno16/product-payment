@@ -15,8 +15,7 @@
 .card-field input { border:1px solid #becbe1; border-radius:.65rem; color:#151827; font:inherit; min-height:2.75rem; min-width:0; padding:.55rem .7rem; width:100%; }
 .card-field input[aria-invalid='true'] { border-color:#a82736; }
 .card-field__error { color:#a82736; font-size:.8rem; margin:.1rem 0 .5rem; }
-.card-dialog__inline { display:grid; gap:.5rem; grid-template-columns:repeat(2,minmax(0,1fr)); }
-.card-dialog__inline .card-field:last-child { grid-column:1/-1; }
+.card-dialog__inline { display:grid; gap:.5rem; grid-template-columns:minmax(0,1fr); }
 .card-brand { background:#ecf2ff; border-radius:.6rem; color:#153b91; font-size:.8rem; font-weight:750; padding:.3rem .6rem; white-space:nowrap; }
 .card-preview-wrap { min-width:0; order:-1; perspective:900px; }
 .card-preview { aspect-ratio:1.7; color:#fff; position:relative; transform-style:preserve-3d; transition:transform 450ms ease; width:100%; }
@@ -39,5 +38,10 @@
 .card-dialog__actions { display:grid; gap:.75rem; grid-template-columns:minmax(0,1fr); margin-top:1rem; }
 .card-dialog__actions button { margin-top:0; min-height:3.2rem; width:100%; }
 @media (min-width:37rem) { .card-dialog__actions { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media (min-width:44rem) { .card-dialog { padding:1.5rem; } .card-dialog__columns { align-items:start; grid-template-columns:minmax(0,1fr) minmax(0,.8fr); } .card-dialog__inline { grid-template-columns:repeat(3,minmax(0,1fr)); } .card-dialog__inline .card-field:last-child { grid-column:auto; } .card-preview-wrap { order:0; position:sticky; top:0; } }
+@media (min-width:30rem) {
+  .card-dialog__inline { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .card-dialog__inline .card-field { grid-row:span 3; grid-template-rows:subgrid; }
+  .card-dialog__inline .card-field:last-child { grid-column:1/-1; }
+}
+@media (min-width:44rem) { .card-dialog { padding:1.5rem; } .card-dialog__columns { align-items:start; grid-template-columns:minmax(0,1fr) minmax(0,.8fr); } .card-preview-wrap { order:0; position:sticky; top:0; } }
 @media (prefers-reduced-motion:reduce) { .card-preview { transition:none; } }
