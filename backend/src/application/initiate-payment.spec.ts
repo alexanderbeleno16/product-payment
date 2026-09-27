@@ -21,6 +21,10 @@ const credentials = {
   acceptanceToken: 'terms-token-transient',
   personalDataToken: 'privacy-token-transient',
 };
+const consent = {
+  acceptsEndUserPolicy: true,
+  acceptsPersonalDataAuthorization: true,
+};
 
 describe('InitiatePayment', () => {
   let saved: CheckoutTransaction | null;
@@ -108,8 +112,22 @@ describe('InitiatePayment', () => {
 
   it('rejects missing transient credentials before creating a PENDING row', async () => {
     expect(
-      await initiate.execute(input, { ...credentials, personalDataToken: '' }),
+      await initiate.execute(input, { ...credentials, personalDataToken: '' }, consent),
     ).toEqual({ ok: false, reason: 'INVALID_INPUT' });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('rejects either missing consent before creating a PENDING row', async () => {
+    for (const declined of [
+      { ...consent, acceptsEndUserPolicy: false },
+      { ...consent, acceptsPersonalDataAuthorization: false },
+    ]) {
+      expect(await initiate.execute(input, credentials, declined)).toEqual({
+        ok: false,
+        reason: 'INVALID_INPUT',
+      });
+    }
     expect(createPending).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
   });
@@ -124,7 +142,7 @@ describe('InitiatePayment', () => {
       stock: 0,
     });
 
-    expect(await initiate.execute(input, credentials)).toEqual({
+    expect(await initiate.execute(input, credentials, consent)).toEqual({
       ok: false,
       reason: 'INSUFFICIENT_STOCK',
     });
@@ -143,7 +161,7 @@ describe('InitiatePayment', () => {
       return false;
     });
 
-    const result = await initiate.execute(input, credentials);
+    const result = await initiate.execute(input, credentials, consent);
     expect(result).toMatchObject({
       ok: true,
       value: {
@@ -157,7 +175,7 @@ describe('InitiatePayment', () => {
   });
 
   it('persists PENDING before one submission and replays without resubmitting', async () => {
-    const first = await initiate.execute(input, credentials);
+    const first = await initiate.execute(input, credentials, consent);
     expect(first).toMatchObject({
       ok: true,
       value: {
@@ -174,25 +192,25 @@ describe('InitiatePayment', () => {
       }),
     );
     expect(submit).toHaveBeenCalledTimes(1);
-    expect(await initiate.execute(input, credentials)).toEqual(first);
+    expect(await initiate.execute(input, credentials, consent)).toEqual(first);
     expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
   it('preserves an unknown outcome and never retries the same claim', async () => {
     submit.mockRejectedValueOnce(new Error('Connection ended after send'));
-    const first = await initiate.execute(input, credentials);
+    const first = await initiate.execute(input, credentials, consent);
     expect(first).toMatchObject({
       ok: true,
       value: { status: 'SUBMISSION_UNKNOWN', providerTransactionId: null },
     });
-    expect(await initiate.execute(input, credentials)).toEqual(first);
+    expect(await initiate.execute(input, credentials, consent)).toEqual(first);
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
   it('records definitive rejection without treating it as a paid checkout', async () => {
     submit.mockResolvedValueOnce({ kind: 'REJECTED' });
-    const result = await initiate.execute(input, credentials);
+    const result = await initiate.execute(input, credentials, consent);
     expect(result).toMatchObject({
       ok: true,
       value: { status: 'SUBMISSION_REJECTED', providerTransactionId: null },
