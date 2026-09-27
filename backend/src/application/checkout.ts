@@ -1,5 +1,6 @@
 import type {
   CheckoutQuote,
+  FulfillmentStatus,
   PaymentStatus,
   PricingFailure,
 } from '../domain/checkout';
@@ -26,6 +27,7 @@ export interface CheckoutTransaction extends CheckoutQuote {
   readonly idempotencyKey: string;
   readonly requestFingerprint: string;
   readonly status: PaymentStatus;
+  readonly fulfillmentStatus: FulfillmentStatus;
   readonly submissionStartedAt: Date | null;
   readonly providerTransactionId: string | null;
   readonly createdAt: Date;

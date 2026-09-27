@@ -15,7 +15,34 @@ export type PaymentStatus =
   | 'SUBMISSION_REJECTED'
   | 'APPROVED'
   | 'DECLINED'
+  | 'VOIDED'
   | 'ERROR';
+
+export type FinalPaymentStatus = 'APPROVED' | 'DECLINED' | 'VOIDED' | 'ERROR';
+
+export type FulfillmentStatus = 'NOT_STARTED' | 'CREATED' | 'STOCK_UNAVAILABLE';
+
+export function isFinalPaymentStatus(
+  status: PaymentStatus,
+): status is FinalPaymentStatus {
+  return (
+    status === 'APPROVED' ||
+    status === 'DECLINED' ||
+    status === 'VOIDED' ||
+    status === 'ERROR'
+  );
+}
+
+export function paymentTransition(
+  current: PaymentStatus,
+  confirmed: FinalPaymentStatus | 'PENDING',
+): 'APPLY' | 'REPLAY' | 'STALE' | 'CONFLICT' {
+  if (isFinalPaymentStatus(current)) {
+    if (confirmed === 'PENDING') return 'STALE';
+    return current === confirmed ? 'REPLAY' : 'CONFLICT';
+  }
+  return 'APPLY';
+}
 
 export type PricingFailure =
   'INVALID_INPUT' | 'INSUFFICIENT_STOCK' | 'UNSUPPORTED_CURRENCY';
