@@ -5,10 +5,11 @@ import { emptyCardForm } from '../features/checkout/cardForm'
 beforeEach(() => sessionStorage.clear())
 
 test('stores only contact and delivery fields in this tab', () => {
-  writeContactProgress(HEADPHONES_PRODUCT_ID, { ...emptyCardForm,
+  const fullForm = { ...emptyCardForm,
     customerEmail: 'buyer@example.test', recipientName: 'Buyer', addressLine: 'Street 1', city: 'Bogotá',
     number: '4111111111111111', cvc: '123', cardHolder: 'Private', expMonth: '12', expYear: '29',
-    policyAccepted: true, dataAccepted: true })
+    policyAccepted: true, dataAccepted: true }
+  writeContactProgress(HEADPHONES_PRODUCT_ID, fullForm)
   const stored = sessionStorage.getItem('shopifast-contact-progress')!
   expect(stored).toContain('buyer@example.test')
   for (const forbidden of ['4111111111111111', '123', 'Private', 'expMonth', 'expYear', 'policyAccepted', 'dataAccepted'])
