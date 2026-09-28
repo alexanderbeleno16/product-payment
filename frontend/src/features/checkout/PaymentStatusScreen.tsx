@@ -15,7 +15,10 @@ export default function PaymentStatusScreen() {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const payment = useAppSelector((state) => state.payment)
 
-  useEffect(() => { headingRef.current?.focus() }, [])
+  useEffect(() => {
+    if (document.activeElement === document.body || !document.activeElement?.isConnected)
+      headingRef.current?.focus()
+  }, [payment.phase])
   useEffect(() => {
     if (payment.phase === 'recovering') {
       void reconcilePayment(dispatch, store.getState)

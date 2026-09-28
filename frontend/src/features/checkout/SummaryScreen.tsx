@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { getQuote } from '../../api/checkoutApi'
 import type { CheckoutQuote } from '../../api/checkoutApi'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
@@ -20,6 +20,7 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
   const confirmDialogRef = useRef<HTMLDialogElement>(null)
   const confirmTriggerRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const sendRef = useRef<HTMLButtonElement>(null)
   const confirmationSentRef = useRef(false)
   const { productId, quantity, product } = useAppSelector((state) => state.checkout)
   const [quote, setQuote] = useState<CheckoutQuote | null>(null)
@@ -55,6 +56,20 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
   function openConfirmation() {
     confirmDialogRef.current?.showModal()
     cancelRef.current?.focus()
+  }
+
+  function containConfirmationFocus(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== 'Tab') return
+    const first = cancelRef.current
+    const last = sendRef.current
+    if (!first || !last) return
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   return <>
@@ -108,6 +123,7 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
     </footer>
     <dialog ref={confirmDialogRef} className="payment-confirmation" aria-labelledby="payment-confirm-title"
       aria-describedby="payment-confirm-description"
+      onKeyDown={containConfirmationFocus}
       onClose={() => confirmTriggerRef.current?.focus()}>
       <h2 id="payment-confirm-title">Confirma tu pago</h2>
       <p id="payment-confirm-description">Revisa el importe final antes de enviar la solicitud. El resultado se confirmará en la siguiente pantalla.</p>
@@ -119,7 +135,7 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
       </dl>}
       <div className="payment-confirmation__actions">
         <button ref={cancelRef} type="button" className="secondary-button" onClick={closeConfirmation}>Volver al resumen</button>
-        <button type="button" className="primary-button" onClick={() => {
+        <button ref={sendRef} type="button" className="primary-button" onClick={() => {
           if (confirmationSentRef.current || status !== 'ready' || !quote) return
           confirmationSentRef.current = true
           confirmDialogRef.current?.close()
