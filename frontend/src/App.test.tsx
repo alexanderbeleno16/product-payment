@@ -78,6 +78,11 @@ function installApi(products: Product[] = [headphones, speaker]) {
         totalCents: product.priceCents * quantity + 700_000,
       })
     }
+    if (input === '/checkout/consents') return response({
+      publicKey: 'pub_test_synthetic',
+      endUserPolicy: { token: 'policy-synthetic', permalink: 'https://example.test/policy' },
+      personalDataAuthorization: { token: 'data-synthetic', permalink: 'https://example.test/data' },
+    })
     return response(null, 404)
   })
   Object.defineProperty(globalThis, 'fetch', {
@@ -128,9 +133,11 @@ test('shows a server catalog and opens one authoritative product quote', async (
 
   await userEvent.setup().click(payButton)
   expect(screen.getByRole('heading', { name: 'Tarjeta y entrega' })).toHaveFocus()
-  expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: 'Tarjeta y entrega' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
   await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(payButton).toHaveFocus()
 })
 
 test('shows exactly two product accordions with description open and verified details on demand', async () => {
