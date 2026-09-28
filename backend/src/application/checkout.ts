@@ -15,6 +15,7 @@ export interface CheckoutInput {
   readonly idempotencyKey: string;
   readonly productId: string;
   readonly quantity: number;
+  readonly expectedTotalCents: number;
   readonly installments: number;
   readonly customerEmail: string;
   readonly delivery: DeliveryDetails;
@@ -34,7 +35,10 @@ export interface CheckoutTransaction extends CheckoutQuote {
 }
 
 export type CheckoutFailure =
-  PricingFailure | 'PRODUCT_NOT_FOUND' | 'IDEMPOTENCY_CONFLICT';
+  | PricingFailure
+  | 'PRODUCT_NOT_FOUND'
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'QUOTE_CHANGED';
 
 export type CheckoutResult<T> =
   | { readonly ok: true; readonly value: T }
