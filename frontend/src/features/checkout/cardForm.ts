@@ -1,5 +1,3 @@
-import type { CardDetails } from '../../api/cardTokenization'
-
 export interface CardFormValues {
   number: string
   cardHolder: string
@@ -18,8 +16,10 @@ export type CardFormField = keyof CardFormValues
 export type CardFormErrors = Partial<Record<CardFormField, string>>
 export type CardBrand = 'visa' | 'mastercard' | 'unknown'
 
-export interface ValidCardDelivery {
-  card: CardDetails
+export interface TokenizedCardDelivery {
+  cardToken: string
+  cardBrand: Exclude<CardBrand, 'unknown'>
+  cardLastFour: string
   customerEmail: string
   delivery: { recipientName: string; addressLine: string; city: string }
   consentTokens: { endUserPolicy: string; personalDataAuthorization: string }

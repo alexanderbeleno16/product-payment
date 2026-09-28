@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { getConsentTerms } from '../../api/checkoutApi'
+import { tokenizeCard, TokenizationError } from '../../api/cardTokenization'
 import type { ConsentTerms } from '../../api/checkoutApi'
 import { useAppDispatch } from '../../app/hooks'
 import { productReturnRequested } from './checkoutSlice'
 import {
   cardBrand, emptyCardForm, maskedCardPreview, validateCardForm,
 } from './cardForm'
-import type { CardFormErrors, CardFormField, CardFormValues, ValidCardDelivery } from './cardForm'
+import type { CardFormErrors, CardFormField, CardFormValues, TokenizedCardDelivery } from './cardForm'
 import './CardDeliveryDialog.css'
 
-interface Props { onValid: (values: ValidCardDelivery) => void | Promise<void> }
+interface Props { onPrepared: (values: TokenizedCardDelivery) => void }
 
-function CardDeliveryDialog({ onValid }: Props) {
+function CardDeliveryDialog({ onPrepared }: Props) {
   const dispatch = useAppDispatch()
   const dialogRef = useRef<HTMLDialogElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
-  const controllerRef = useRef<AbortController | null>(null)
+  const tokenControllerRef = useRef<AbortController | null>(null)
+  const submittingRef = useRef(false)
   const [values, setValues] = useState<CardFormValues>(emptyCardForm)
   const [errors, setErrors] = useState<CardFormErrors>({})
   const [terms, setTerms] = useState<ConsentTerms | null>(null)
@@ -34,7 +36,7 @@ function CardDeliveryDialog({ onValid }: Props) {
     dialog?.showModal()
     headingRef.current?.focus()
     return () => {
-      controllerRef.current?.abort()
+      tokenControllerRef.current?.abort()
       dialog?.close()
       openerRef.current?.focus()
     }
@@ -42,7 +44,6 @@ function CardDeliveryDialog({ onValid }: Props) {
 
   useEffect(() => {
     const controller = new AbortController()
-    controllerRef.current = controller
     void getConsentTerms(controller.signal).then((current) => {
       if (!controller.signal.aborted) {
         setTerms(current)
@@ -55,7 +56,6 @@ function CardDeliveryDialog({ onValid }: Props) {
   }, [termsAttempt])
 
   function retryTerms() {
-    controllerRef.current?.abort()
     setTermsStatus('loading')
     setTerms(null)
     setMessage('')
@@ -63,7 +63,7 @@ function CardDeliveryDialog({ onValid }: Props) {
   }
 
   function close() {
-    if (submitting) return
+    tokenControllerRef.current?.abort()
     dispatch(productReturnRequested())
   }
 
@@ -87,7 +87,7 @@ function CardDeliveryDialog({ onValid }: Props) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (submitting) return
+    if (submittingRef.current) return
     const nextErrors = validateCardForm(values)
     if (!terms || termsStatus !== 'ready') {
       setMessage('Necesitamos los documentos vigentes para continuar.')
@@ -99,22 +99,36 @@ function CardDeliveryDialog({ onValid }: Props) {
       dialogRef.current?.querySelector<HTMLInputElement>(`[name="${firstError}"]`)?.focus()
       return
     }
+    submittingRef.current = true
     setSubmitting(true)
-    setMessage('Preparando los datos de pago…')
+    setMessage('Protegiendo la tarjeta…')
+    const controller = new AbortController()
+    tokenControllerRef.current = controller
     try {
-      await onValid({
-        card: { number: values.number, cardHolder: values.cardHolder.trim(),
-          expMonth: values.expMonth, expYear: values.expYear, cvc: values.cvc },
+      const cardToken = await tokenizeCard({
+        number: values.number, cardHolder: values.cardHolder.trim(),
+        expMonth: values.expMonth, expYear: values.expYear, cvc: values.cvc,
+      }, terms.publicKey, controller.signal)
+      if (controller.signal.aborted) return
+      if (brand === 'unknown') return
+      onPrepared({
+        cardToken,
+        cardBrand: brand,
+        cardLastFour: values.number.slice(-4),
         customerEmail: values.customerEmail.trim().toLowerCase(),
         delivery: { recipientName: values.recipientName.trim(), addressLine: values.addressLine.trim(), city: values.city.trim() },
         consentTokens: { endUserPolicy: terms.endUserPolicy.token,
           personalDataAuthorization: terms.personalDataAuthorization.token },
       })
-      setMessage('Datos validados. Todavía no se ha realizado ningún pago.')
-    } catch {
-      setMessage('No pudimos continuar. Vuelve a intentarlo.')
+    } catch (error) {
+      if (controller.signal.aborted) return
+      setMessage(error instanceof TokenizationError && error.reason === 'configuration'
+        ? 'La tokenización no está configurada. Contacta a soporte.'
+        : 'No pudimos proteger la tarjeta. Verifica la conexión e inténtalo de nuevo.')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
+      tokenControllerRef.current = null
     }
   }
 
