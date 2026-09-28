@@ -4,7 +4,27 @@ NestJS and TypeScript API for a single-product checkout. The backend exposes pro
 
 ## Run locally
 
-Prerequisites: Node.js 24, npm 11, and Docker (or an existing PostgreSQL 17 server). These versions match the local verification environment; supported version ranges have not been established yet.
+Prerequisites: Docker with Compose for the two-container setup below. Node.js 24 and npm 11 are needed only for the host-run alternative or frontend development; these versions match the local verification environment, but supported version ranges have not been established yet.
+
+On first setup only, copy the root `.env.example` to `.env` and choose a URL-safe local database password; do not overwrite an existing root `.env` when restarting, because the named volume retains its original database password. Supply the six approved `PAYMENT_*` variables in the separate, untracked `backend/.env` (see `backend/.env.example`). Keep real payment credentials out of the root `.env` and all tracked files. The container loads `backend/.env` only at runtime and overrides its host `DATABASE_URL` with the Compose database address.
+
+```bash
+test -f .env || cp .env.example .env
+# First setup: edit the two local env files before starting.
+docker compose up --build -d --wait
+curl -i http://127.0.0.1:3000/products
+```
+
+Compose runs PostgreSQL 17 on `127.0.0.1:5433` and the compiled Nest API on `127.0.0.1:3000`. It waits for the database health check, then runs explicit migrations and the idempotent seed before serving the API. Data survives normal stops in the named `checkout_pgdata` volume. The Vite frontend remains a host process in `frontend/` (`npm run dev`) and proxies API routes to port 3000.
+
+```bash
+docker compose down                 # Stop API and database; retain data.
+# docker compose down -v            # Destructive: also delete the local database volume.
+```
+
+Use `docker compose ps` and `docker compose logs api` to diagnose startup failures. The API requires valid server-only payment configuration even for product reads. This Compose stack is for local development, not a deployed API or HTTPS boundary.
+
+### Host-run alternative
 
 From the repository root, start a disposable local database:
 
