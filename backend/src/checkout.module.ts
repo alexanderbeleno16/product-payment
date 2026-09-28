@@ -12,6 +12,7 @@ import { ReceivePaymentEvent } from './application/receive-payment-event';
 import { ReconcileKnownPayment } from './application/reconcile-known-payment';
 import type { ProductReader } from './application/product-reader.port';
 import { CheckoutController } from './adapters/inbound/http/checkout.controller';
+import { CardTokenizationController } from './adapters/inbound/http/card-tokenization.controller';
 import { PaymentEventController } from './adapters/inbound/http/payment-event.controller';
 import { PaymentEventVerifier } from './adapters/inbound/http/payment-event.verifier';
 import { DatabaseConnection } from './adapters/outbound/persistence/database-connection';
@@ -19,6 +20,7 @@ import { DatabaseModule } from './adapters/outbound/persistence/database.module'
 import { TypeOrmCheckoutStore } from './adapters/outbound/persistence/typeorm-checkout.store';
 import { TypeOrmFinalizationStore } from './adapters/outbound/persistence/typeorm-finalization.store';
 import { SandboxConsentTermsReader } from './adapters/outbound/payment/sandbox-consent-terms.reader';
+import { SandboxCardTokenization } from './adapters/outbound/payment/sandbox-card-tokenization';
 import { SandboxPaymentGateway } from './adapters/outbound/payment/sandbox-payment.gateway';
 import { SandboxPaymentStatusReader } from './adapters/outbound/payment/sandbox-payment-status.reader';
 import {
@@ -39,8 +41,21 @@ function requiredPaymentEnv(name: string): string {
 
 @Module({
   imports: [DatabaseModule, ProductsModule],
-  controllers: [CheckoutController, PaymentEventController],
+  controllers: [
+    CheckoutController,
+    CardTokenizationController,
+    PaymentEventController,
+  ],
   providers: [
+    {
+      provide: SandboxCardTokenization,
+      useFactory: (): SandboxCardTokenization =>
+        new SandboxCardTokenization({
+          apiBaseUrl: requiredPaymentEnv('PAYMENT_API_BASE_URL'),
+          expectedSandboxHost: requiredPaymentEnv('PAYMENT_SANDBOX_HOST'),
+          publicKey: requiredPaymentEnv('PAYMENT_PUBLIC_KEY'),
+        }),
+    },
     {
       provide: FinalizeVerifiedPayment,
       useFactory: (connection: DatabaseConnection): FinalizeVerifiedPayment =>

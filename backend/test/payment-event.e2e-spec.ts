@@ -1,3 +1,4 @@
+import { SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
 import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -90,6 +91,8 @@ describe('Signed payment event HTTP contract (e2e)', () => {
       .useValue({ execute: finalize })
       .overrideProvider(PaymentEventVerifier)
       .useValue(new PaymentEventVerifier(secret))
+      .overrideProvider(SandboxCardTokenization)
+      .useValue({ encryptionKey: jest.fn(), tokenize: jest.fn() })
       .compile();
     app = fixture.createNestApplication();
     configureOpenApi(app);
