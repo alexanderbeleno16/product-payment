@@ -84,8 +84,15 @@ sequenceDiagram
     API-->>SPA: Current policy links, consent tokens, public key
     Buyer->>SPA: Explicitly accept both current consent documents
     SPA->>SPA: Validate card, delivery, and both consents
-    SPA->>Provider: Tokenize card in browser
-    Provider-->>SPA: Payment token
+    SPA->>API: GET /checkout/tokenization-key
+    API->>Provider: Fetch public encryption key
+    Provider-->>API: Public encryption key
+    API-->>SPA: Public encryption key only
+    SPA->>SPA: Encrypt card details as compact JWE
+    SPA->>API: POST /checkout/card-tokens with compact JWE only
+    API->>Provider: Relay compact JWE for tokenization
+    Provider-->>API: Opaque card token
+    API-->>SPA: Opaque card token only
     SPA->>API: GET /checkout/quote before summary
     API-->>SPA: Refreshed server-priced quote
     SPA-->>Buyer: Show non-paying summary and disabled payment action
