@@ -21,14 +21,14 @@ test('blocks stale totals after a failed quote and retries without a payment POS
     baseFeeCents: 20_000, deliveryFeeCents: 30_000, totalCents: 150_000,
   }
   let quoteCalls = 0
-  const fetchMock = jest.fn((input: string) => {
+  const fetchMock = jest.fn((input: string, _options?: RequestInit) => {
     if (input.startsWith('/products/')) return Promise.resolve({ ok: false, status: 503 })
     quoteCalls += 1
     return quoteCalls === 1
       ? Promise.resolve({ ok: false, status: 503 })
       : Promise.resolve({ ok: true, status: 200, json: async () => quote })
   })
-  globalThis.fetch = fetchMock
+  Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: fetchMock })
   const store = makeStore()
   store.dispatch(progressRestored({ productId: HEADPHONES_PRODUCT_ID, quantity: 1 }))
   render(<Provider store={store}><SummaryScreen prepared={prepared} onLeave={jest.fn()} onRetokenize={jest.fn()} /></Provider>)
