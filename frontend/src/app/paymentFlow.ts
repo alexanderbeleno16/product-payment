@@ -7,25 +7,41 @@ import {
   paymentSubmissionUnknown, paymentStatusReceived, paymentStatusRequested,
   paymentStatusUnavailable,
 } from '../features/checkout/paymentSlice'
-import { hasPaymentRecoveryRecord, readPaymentRecovery, writePaymentRecovery } from './paymentRecovery'
+import {
+  clearPaymentRecoveryFor, hasPaymentRecoveryRecord, markPaymentSubmissionRejected,
+  readPaymentRecovery, writePaymentRecovery,
+} from './paymentRecovery'
 import type { AppDispatch, RootState } from './store'
 
 type GetState = () => RootState
 const statusInFlight = new Map<string, Promise<void>>()
+// A failed marker write is recoverable within this page only. After reload, 404 stays unknown.
+const rejectedInThisPage = new Set<string>()
 
 export function reconcilePayment(dispatch: AppDispatch, getState: GetState): Promise<void> {
   const current = getState().payment
   const key = current.idempotencyKey
-  if (!key || ['idle', 'resolved', 'rejected', 'storage_error'].includes(current.phase))
+  const trackingStockException = current.phase === 'resolved' &&
+    current.paymentStatus === 'APPROVED' && current.fulfillmentStatus === 'STOCK_UNAVAILABLE'
+  if (!key || ['idle', 'rejected', 'storage_error'].includes(current.phase) ||
+    (current.phase === 'resolved' && !trackingStockException))
     return Promise.resolve()
   const existing = statusInFlight.get(key)
   if (existing) return existing
   dispatch(paymentStatusRequested(key))
   const requestVersion = getState().payment.requestVersion
   const request = getCheckoutStatus(key, new AbortController().signal).then((status) => {
+    rejectedInThisPage.delete(key)
     dispatch(paymentStatusReceived({ idempotencyKey: key, requestVersion, status }))
-  }).catch(() => {
-    dispatch(paymentStatusUnavailable({ key, requestVersion }))
+  }).catch((error: unknown) => {
+    const saved = readPaymentRecovery()
+    if (error instanceof CheckoutTransportError && error.outcome === 'not_found' &&
+      saved?.idempotencyKey === key && (saved.submissionRejected || rejectedInThisPage.has(key))) {
+      if (clearPaymentRecoveryFor(key)) {
+        rejectedInThisPage.delete(key)
+        dispatch(paymentSubmissionRejected(key))
+      } else dispatch(paymentStatusUnavailable({ key, requestVersion }))
+    } else dispatch(paymentStatusUnavailable({ key, requestVersion }))
   }).finally(() => { statusInFlight.delete(key) })
   statusInFlight.set(key, request)
   return request
@@ -59,6 +75,7 @@ export async function submitPayment(
     dispatch(paymentStorageFailed())
     return false
   }
+  rejectedInThisPage.delete(key)
   const identity = { idempotencyKey: key, productId: checkout.productId, quantity: checkout.quantity }
   if (!writePaymentRecovery(identity)) {
     dispatch(paymentStorageFailed())
@@ -81,8 +98,7 @@ export async function submitPayment(
     }, key, new AbortController().signal)
   } catch (error) {
     if (error instanceof CheckoutTransportError && error.outcome === 'rejected') {
-      dispatch(paymentSubmissionRejected(key))
-      return true
+      if (!markPaymentSubmissionRejected(key)) rejectedInThisPage.add(key)
     }
     dispatch(paymentSubmissionUnknown(key))
   }

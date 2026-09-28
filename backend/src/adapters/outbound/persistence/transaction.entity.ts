@@ -66,6 +66,26 @@ export class TransactionEntity {
   })
   providerTransactionId!: string | null;
 
+  @Column({ name: 'reconciliation_attempts', type: 'integer', default: 0 })
+  reconciliationAttempts!: number;
+
+  @Column({
+    name: 'reconciliation_next_at',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
+  reconciliationNextAt!: Date;
+
+  @Column({
+    name: 'reconciliation_lease_until',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  reconciliationLeaseUntil!: Date | null;
+
+  @Column({ name: 'reconciliation_lease_owner', type: 'uuid', nullable: true })
+  reconciliationLeaseOwner!: string | null;
+
   @Column({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 }

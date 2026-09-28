@@ -55,12 +55,16 @@ const paymentSlice = createSlice({
         state.phase = 'unknown'
     },
     paymentSubmissionRejected(state, action: PayloadAction<string>) {
-      if (state.idempotencyKey !== action.payload || state.phase !== 'submitting') return
+      if (state.idempotencyKey !== action.payload ||
+        !['submitting', 'checking', 'unknown'].includes(state.phase)) return
       state.phase = 'rejected'
     },
     paymentStatusRequested(state, action: PayloadAction<string>) {
+      const trackingStockException = state.phase === 'resolved' &&
+        state.paymentStatus === 'APPROVED' && state.fulfillmentStatus === 'STOCK_UNAVAILABLE'
       if (state.idempotencyKey !== action.payload ||
-        ['idle', 'rejected', 'storage_error', 'resolved'].includes(state.phase)) return
+        ['idle', 'rejected', 'storage_error'].includes(state.phase) ||
+        (state.phase === 'resolved' && !trackingStockException)) return
       state.requestVersion += 1
       state.checks += 1
       state.phase = 'checking'

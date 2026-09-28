@@ -9,10 +9,10 @@ metadata:
 
 ## Activation Contract
 Use when adding or running tests, mocks, coverage, or Jest configuration in either application.
-Read the [Jest testing field guide](references/field-guide.md) for layer choice, frontend setup gaps, mocking boundaries, and coverage evidence.
+Read the [Jest testing field guide](references/field-guide.md) for layer choice, configured frontend runner, mocking boundaries, and coverage evidence.
 
 ## Hard Rules
-- Use Jest in both applications. The backend scaffold already has Jest; the frontend scaffold does not yet have a test runner, so do not claim it is configured.
+- Use Jest in both applications. The frontend runner is configured in `frontend/jest.config.cjs` with SWC, jsdom, and Testing Library; verify it with `cd frontend && npm run test:coverage -- --runInBand`. The backend runner is configured separately.
 - Test observable behavior and failure paths; avoid coupling tests to implementation details.
 - Mock external I/O at clear ports, not core business behavior under test.
 - Measure coverage separately for frontend and backend; the brief requires **more than 80%**, not merely 80%.
@@ -47,7 +47,7 @@ The [field guide](references/field-guide.md) expands these rules with rationale,
 
 ## Execution Steps
 1. Map acceptance cases and choose unit, component, adapter, or E2E evidence for each.
-2. Configure the proper test environment/transform per app only when authorized; the frontend has no Jest setup yet.
+2. Verify each app's configured environment and transform; use a Node environment only for tests that require real cryptography rather than DOM behavior.
 3. Add behavior tests and mocks at external ports, including negative assertions for forbidden effects.
 4. Run focused suites, full suites, and coverage with exact commands; inspect branch gaps and uncovered critical paths.
 

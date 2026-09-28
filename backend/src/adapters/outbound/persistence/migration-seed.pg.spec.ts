@@ -74,6 +74,7 @@ const standId = '14746114-cb12-446c-8386-3c7bce2bd966';
           { name: 'CreateProducts1790380800000' },
           { name: 'CreateCheckout1790467200000' },
           { name: 'CreateDeliveries1790553600000' },
+          { name: 'AddReconciliationLease1790640000000' },
         ]);
         expect(
           await migrated.query<
@@ -220,6 +221,12 @@ const standId = '14746114-cb12-446c-8386-3c7bce2bd966';
             })
           ).name,
         ).toBe('Portable Speaker');
+
+        await rollback.undoLastMigration();
+        expect(
+          await rollback.query(`SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'transactions' AND column_name = 'reconciliation_lease_until'`),
+        ).toEqual([]);
 
         await rollback.undoLastMigration();
         expect(

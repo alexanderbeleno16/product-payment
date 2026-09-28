@@ -1,6 +1,6 @@
 # Jest testing field guide
 
-The brief requires Jest unit tests in both frontend and backend and more than 80% coverage. The backend scaffold currently has Jest scripts; the Vite frontend does not yet have Jest or Testing Library installed. This guide does not silently add dependencies or claim measured coverage.
+The brief requires Jest unit tests in both frontend and backend and more than 80% coverage. Both applications now have Jest scripts. The Vite frontend uses `frontend/jest.config.cjs` with SWC, jsdom, and Testing Library; a dedicated Node-environment test exercises real JOSE encryption with a disposable in-memory key. Test presence is not a coverage measurement: run each application's coverage command and report the observed result.
 
 ## Evidence layers
 
@@ -23,9 +23,9 @@ Instantiate a use case with small fake ports. Assert both the returned result an
 
 Prefer queries by role, label, and visible text. Trigger interactions as a user would and await async UI updates. Avoid asserting component internals or snapshotting entire checkout pages as the primary proof. Test focus, error associations, pending announcements, and refresh behavior where relevant.
 
-### R04 — Configure frontend Jest explicitly
+### R04 — Verify frontend Jest configuration
 
-Vite compilation does not configure Jest. When implementation begins, choose a TS/JSX transform compatible with the installed versions, a DOM environment (commonly `jest-environment-jsdom`), asset/style handling, and Testing Library setup. Verify the actual config by running one passing and one intentionally failing focused test before claiming the runner works. Do not install this during a documentation-only task.
+Vite compilation does not configure Jest. The current runner is separate: SWC transforms TypeScript/JSX, jsdom supports DOM tests, style/assets have a mapper, and Testing Library setup is explicit. `jose` is transformed for the Node-environment cryptographic contract test. Verify the config with a focused suite and the full run; do not infer browser behavior from a Node crypto test or crypto correctness from a mocked DOM test.
 
 ### R05 — Use Nest E2E for wiring
 
@@ -53,7 +53,7 @@ Use fictitious non-sensitive values and authorized sandbox fixtures only. Never 
 
 ### R11 — Report exact execution
 
-For each test run, record command, passing/failing suite count, test count, and environment. If frontend Jest is absent, say "not configured" rather than implying the backend test result covers both applications. If tests fail, report the failure rather than reducing coverage scope to make the run green.
+For each test run, record command, passing/failing suite count, test count, and environment. If a runner is unavailable on another clone, say so rather than implying the backend result covers both applications. If tests fail, report the failure rather than reducing coverage scope to make the run green.
 
 ## Review checklist
 
