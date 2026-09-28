@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Product Payment API — local checkout contract",
-    "description": "Requests for the implemented buyer-facing backend API. Start the backend locally and set the collection variables before sending requests. Prices and stock are server-owned; 201 on checkout creation does not mean payment approval. The signed POST /payment/events endpoint is provider-to-server only and intentionally has no runnable example here: never fabricate a checksum or submit a synthetic event as an authority signal. Local Swagger UI is available at /api and OpenAPI JSON at /api-json while the backend is running. No public deployment URL is claimed.",
+    "description": "Requests for the implemented buyer-facing backend API. Start the backend locally. Run the quote before checkout; its response script stores only totalCents as expectedTotalCents. Supply fresh JWE, card and consent tokens only in a local unsynced session, and clear them before exporting this collection. Prices and stock are server-owned; 201 on checkout creation does not mean payment approval. The signed POST /payment/events endpoint is provider-to-server only and intentionally has no runnable example here: never fabricate a checksum or submit a synthetic event as an authority signal. Local Swagger UI is available at /api and OpenAPI JSON at /api-json while the backend is running. No public deployment URL is claimed.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -29,8 +29,24 @@
         "method": "GET",
         "header": [],
         "url": "{{baseUrl}}/checkout/quote?productId={{productId}}&quantity={{quantity}}",
-        "description": "200 returns productId, quantity, currency, unitPriceCents, productAmountCents, baseFeeCents, deliveryFeeCents and totalCents. Amounts are integer COP cents calculated by the server. Invalid input returns 400; missing product 404; insufficient stock 409; unsupported currency 422. A quote does not reserve stock."
-      }
+        "description": "Run immediately before creating a checkout. 200 returns productId, quantity, currency, unitPriceCents, productAmountCents, baseFeeCents, deliveryFeeCents and totalCents. The response script stores only the non-sensitive integer totalCents in this collection's expectedTotalCents variable. Amounts are integer COP cents calculated by the server. Invalid input returns 400; missing product 404; insufficient stock 409; unsupported currency 422. A quote does not reserve stock; a stale expected total returns QUOTE_CHANGED on checkout creation."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const quote = pm.response.json();",
+              "  if (Number.isSafeInteger(quote.totalCents) && quote.totalCents > 0) {",
+              "    pm.collectionVariables.set('expectedTotalCents', String(quote.totalCents));",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "Read current consents",
@@ -39,6 +55,38 @@
         "header": [],
         "url": "{{baseUrl}}/checkout/consents",
         "description": "200 returns a browser-safe publicKey and current endUserPolicy and personalDataAuthorization documents, each with token and permalink. Review both current documents and obtain their tokens for a checkout. Provider unavailability returns 503. Never commit, export, or sync captured tokens."
+      }
+    },
+    {
+      "name": "Read public tokenization key",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/checkout/tokenization-key",
+        "description": "200 returns only a public PEM encryption key. Browser-side encryption produces a compact JWE; never send raw card fields to this API or store them in Postman. The local guard can return 429 with Retry-After; upstream unavailability returns 503. Do not cache this response at a proxy."
+      }
+    },
+    {
+      "name": "Exchange encrypted card payload for transient token",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"payload\": \"{{compactJwe}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/checkout/card-tokens",
+        "description": "Supply only a fresh browser-generated compact JWE (RSA-OAEP-256/A256GCM, at most 4,096 characters), never plaintext card fields. A 201 returns only an opaque transient token for the current checkout. Do not save, export, log, or sync the JWE or returned token. Unexpected fields or malformed input return 400; the local guard can return 429 with Retry-After; rejected card details return 422; unavailable tokenization returns 503. The request is not runnable until a fresh local compactJwe is supplied."
       }
     },
     {
@@ -58,7 +106,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": {{quantity}},\n  \"installments\": 1,\n  \"customerEmail\": \"{{customerEmail}}\",\n  \"delivery\": {\n    \"recipientName\": \"{{recipientName}}\",\n    \"addressLine\": \"{{addressLine}}\",\n    \"city\": \"{{city}}\"\n  },\n  \"cardToken\": \"{{cardToken}}\",\n  \"acceptanceToken\": \"{{acceptanceToken}}\",\n  \"personalDataToken\": \"{{personalDataToken}}\",\n  \"acceptsEndUserPolicy\": true,\n  \"acceptsPersonalDataAuthorization\": true\n}",
+          "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": {{quantity}},\n  \"expectedTotalCents\": {{expectedTotalCents}},\n  \"installments\": 1,\n  \"customerEmail\": \"{{customerEmail}}\",\n  \"delivery\": {\n    \"recipientName\": \"{{recipientName}}\",\n    \"addressLine\": \"{{addressLine}}\",\n    \"city\": \"{{city}}\"\n  },\n  \"cardToken\": \"{{cardToken}}\",\n  \"acceptanceToken\": \"{{acceptanceToken}}\",\n  \"personalDataToken\": \"{{personalDataToken}}\",\n  \"acceptsEndUserPolicy\": true,\n  \"acceptsPersonalDataAuthorization\": true\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -66,7 +114,22 @@
           }
         },
         "url": "{{baseUrl}}/checkouts",
-        "description": "Requires a transient browser-generated card token, both current consent tokens, explicit consent, and delivery details. Never send raw card number, expiry or security code to this API. Do not persist payment/consent tokens in a shared Postman environment or export. 201 returns a local reference, current status and server-calculated quote, NOT approval or delivery. Same key and same canonical checkout data replay the original checkout without another payment submission. A different checkout with the same key returns 409. Validation or missing consent returns 400; missing product 404; insufficient stock 409; unsupported currency 422. PENDING and SUBMISSION_UNKNOWN need later status verification; do not blindly retry a charge after timeout."
+        "description": "Run the quote first and pass its server-calculated expectedTotalCents, a transient card token, both current consent tokens, explicit consent, and delivery details. Keep transient token variables local and empty in exported copies. Never send raw card number, expiry or security code. 201 returns a local reference, status and quote, NOT approval or delivery. Same key and same canonical checkout data replay the original checkout without another payment submission. Changed data or quoted total with the same key returns 409; a stale first-attempt quote returns 409 QUOTE_CHANGED. Validation or missing consent returns 400; missing product 404; insufficient stock 409; unsupported currency 422. PENDING and SUBMISSION_UNKNOWN need later status verification; do not blindly retry a charge after timeout."
+      }
+    },
+    {
+      "name": "Recover checkout status by original key",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}",
+            "description": "Use the original checkout UUID v4 even if the POST response was lost."
+          }
+        ],
+        "url": "{{baseUrl}}/checkouts/status",
+        "description": "200 returns only reference, paymentStatus and fulfillmentStatus for the original checkout. Read-only: no new provider request, payment submission, stock decrement, or delivery creation. Missing or malformed key returns 400; unknown key returns 404. The key is a shared secret, not general buyer authentication; never put it in a URL or log."
       }
     },
     {
@@ -99,6 +162,10 @@
       "value": "1"
     },
     {
+      "key": "expectedTotalCents",
+      "value": ""
+    },
+    {
       "key": "idempotencyKey",
       "value": ""
     },
@@ -120,6 +187,10 @@
     },
     {
       "key": "city",
+      "value": ""
+    },
+    {
+      "key": "compactJwe",
       "value": ""
     },
     {
