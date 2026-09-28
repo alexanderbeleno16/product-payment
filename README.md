@@ -242,16 +242,16 @@ El precio y las existencias definidos como autoridad por el servidor residen en 
 
 La SPA sirve dos vistas WebP locales optimizadas por cada uno de los diez productos cargados inicialmente desde `frontend/public/`. `frontend/public/brand-mark.webp` proporciona la marca de la tienda. Un [mapa de ID de producto a imagen](frontend/src/features/checkout/productImages.ts) exclusivo del frontend vincula estos recursos estáticos con los ID iniciales conocidos; PostgreSQL no tiene columna de imagen ni servicio de carga, y la API de productos no devuelve URL de imágenes. Los productos desconocidos muestran un estado de imagen no disponible, no una foto ajena. El catálogo prioriza sus dos primeras imágenes y carga de forma diferida las siguientes; el producto seleccionado presenta una galería con selección de miniaturas y visor de pantalla completa. Las comprobaciones locales en navegador cubrieron diez tarjetas y diseños de 320–1280px frente a NestJS y PostgreSQL, pero no se afirma ninguna garantía de latencia de carga de imágenes en producción.
 
-## 5. Topología de despliegue en AWS (propuesta)
+## 5. Topología de despliegue en AWS
 
-Esta es una propuesta de despliegue, **no un entorno AWS existente**. El diagrama muestra únicamente tráfico de ejecución. La compilación de React es estática, por lo que no necesita un contenedor de frontend en producción. El único contenedor de aplicación ejecutaría NestJS; se propone PostgreSQL como base de datos administrada y no pública, en lugar de un contenedor de base de datos en producción.
+Esta topología se desplegó en `us-east-1` el 28 de septiembre de 2026. El diagrama muestra únicamente tráfico de ejecución. La compilación de React es estática y se sirve desde S3 mediante CloudFront; NestJS se ejecuta en ECS Express Mode y PostgreSQL en RDS no público.
 
 ```mermaid
 flowchart LR
     Browser[Navegador del comprador]
     Provider[Entorno de prueba de Empresa innombrable]
 
-    subgraph AWS["AWS - propuesta"]
+    subgraph AWS["AWS - desplegado"]
         CloudFront[CloudFront<br/>Frontend HTTPS]
         S3[(Bucket S3 privado<br/>Compilación React e imágenes)]
         subgraph VPC["VPC"]
@@ -263,7 +263,7 @@ flowchart LR
 
     Browser -->|Cargar SPA por HTTPS| CloudFront
     CloudFront -->|Acceso privado al origen| S3
-    Browser -->|Llamar a la API por HTTPS| ALB
+    Browser -->|Llamar a la API por HTTPS y el mismo origen| CloudFront
     ALB -->|HTTP a la tarea| ECS
     Browser -->|JWE cifrado a ruta del mismo origen| CloudFront
     CloudFront -->|Rutas de tokenización sin caché| ALB
@@ -272,10 +272,10 @@ flowchart LR
     ECS -->|Pago y conciliación explícita por HTTPS| Provider
 ```
 
-CloudFront serviría la SPA desde S3 con control de acceso al origen. ECS Express Mode crearía un ALB accesible desde Internet y una tarea Fargate en las subredes públicas de la VPC predeterminada. El HTTPS público terminaría en el ALB; su conexión con la tarea NestJS usaría HTTP de forma predeterminada. Restringí el ingreso a la tarea para permitir solo el ALB y mantenga RDS no público, en la misma VPC, con el puerto PostgreSQL 5432 abierto únicamente al grupo de seguridad de la tarea. La tarea necesita salida HTTPS hacia el proveedor de pagos; el endpoint público de eventos debe verificar firma e identidad de transacción antes de cambiar cualquier estado. Esta propuesta de subred pública evita una puerta de enlace NAT; mover la tarea a subredes privadas exigiría revisar tanto el ingreso público como la salida a Internet. CloudFront debe dirigir `/checkout/*` a la API como comportamiento HTTPS del mismo origen, reenviar GET/POST y las cabeceras necesarias, y desactivar la caché de respuestas de clave pública y tokenización. Otras rutas de API pueden permanecer en un origen HTTPS separado con CORS/CSP configurados deliberadamente. El navegador cifra la tarjeta antes de enviar un JWE compacto a través de la API; los datos de tarjeta sin cifrar no deben atravesarla. Una protección local por proceso ya limita ambas rutas públicas de tokenización, pero AWS aún requiere límites distribuidos o perimetrales por cliente, una política de proxy/IP confiable y supervisión de abuso antes de la exposición pública; las direcciones de pares del ALB no identifican al comprador.
+CloudFront utiliza control de acceso al origen para leer el bucket privado y reenvía las rutas de API al endpoint HTTPS de ECS Express Mode, sin caché en las rutas de API. El ALB público solo permite el ingreso a la tarea Fargate por el puerto de NestJS; RDS admite PostgreSQL 5432 únicamente desde el grupo de seguridad de esa tarea. La tarea usa una subred pública de la VPC predeterminada para salir por HTTPS sin puerta de enlace NAT. El navegador cifra la tarjeta antes de enviar el JWE compacto por la ruta del mismo origen. El endpoint de eventos del proveedor llega al ALB por HTTPS y verifica el evento antes de finalizar una compra. Sigue pendiente un límite distribuido o perimetral de abuso: el limitador local por proceso no sustituye esa protección.
 
-Antes del despliegue, configure un retorno de rutas de la SPA a `index.html` para las actualizaciones del navegador, proporcione credenciales de base de datos y proveedor mediante un mecanismo de secretos en lugar de incluirlas en la imagen o la compilación del frontend y verifique TLS, cabeceras y reglas de grupos de seguridad reales. Estos detalles operativos no se incluyen como cajas adicionales en el diagrama de ejecución de manera deliberada.
+La SPA actual solo utiliza la ruta `/`, por lo que no necesita un retorno de rutas profundas a `index.html`. Las credenciales de base de datos y del proveedor están en Secrets Manager, no en la imagen ni en el frontend. La imagen de API incluye el certificado regional de RDS y verifica TLS con `sslmode=verify-full`. La URL de base de datos usa actualmente el usuario maestro; separar un usuario de aplicación con privilegios mínimos y coordinar su rotación queda pendiente antes de tratar este entorno como producción definitiva.
 
-La automatización del despliegue **no está implementada**: las GitHub Actions actuales solo comprueban las solicitudes de cambio. Un flujo posterior podría usar credenciales OIDC de corta duración para cargar la compilación React en S3, publicar la imagen de API en ECR y actualizar el servicio ECS. Antes de aprovisionar, verifique disponibilidad del servicio, precios regionales y elegibilidad de créditos en la cuenta AWS Free Plan real; el crédito de USD 100 no garantiza que esta topología sea gratuita. Mantenga los recursos pequeños y configure una alerta de presupuesto. Todavía no se verificaron recursos AWS, URL públicas ni costos de nube.
+La tienda está en [CloudFront](https://d12hv8vhtndguc.cloudfront.net/) y la documentación de API en el [endpoint HTTPS de ECS](https://sh-7d942072faad4ccf8600cc4f46d59cc7.ecs.us-east-1.on.aws/api). Se verificaron el catálogo en navegador, 10 productos desde RDS, la carga de autorizaciones y las respuestas HTTP 200 de SPA/API. No se ha confirmado todavía un pago terminal real en AWS. El flujo `.github/workflows/deploy-aws.yml` está preparado para comprobar ambas aplicaciones y, tras un cambio en `develop`, publicar ECR/S3, ejecutar migraciones y actualizar ECS mediante OIDC sin claves AWS estáticas; **su primera ejecución en GitHub sigue pendiente de verificación**. El crédito de AWS no garantiza ausencia de cargos: el presupuesto mensual configurado por el usuario es de USD 20, pero no se ha medido aún el costo real de estos recursos.
 
 Referencias de AWS: [origen privado S3 con CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [red y destinos predeterminados de ECS Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html) y [grupos de seguridad de RDS](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-groups.html).
