@@ -70,12 +70,90 @@ test('storage failure aborts before payment POST', async () => {
   } finally { spy.mockRestore() }
 })
 
-test('a 409 conflict is a definitive rejection without guessing its cause', async () => {
+test('a rejected POST becomes retryable only after status confirms no local checkout', async () => {
   jest.mocked(fetch).mockResolvedValueOnce(response({ code: 'QUOTE_CHANGED' }, 409))
+    .mockResolvedValueOnce(response(null, 404))
   const store = makeStore()
   expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
   expect(store.getState().payment).toMatchObject({ phase: 'rejected', paymentStatus: null })
-  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(readPaymentRecovery()).toBeNull()
+  const refreshed = makeStore(true)
+  expect(refreshed.getState().payment.phase).toBe('idle')
+})
+
+test('a rejected POST recovers after marker write fails and status confirms absence', async () => {
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 422))
+    .mockResolvedValueOnce(response(null, 404))
+  const originalSetItem = Storage.prototype.setItem
+  const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, name, value) {
+    if (value.includes('submissionRejected')) throw new Error('write disabled')
+    return originalSetItem.call(this, name, value)
+  })
+  try {
+    const store = makeStore()
+    expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
+    expect(store.getState().payment.phase).toBe('rejected')
+    expect(readPaymentRecovery()).toBeNull()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  } finally { spy.mockRestore() }
+})
+
+test('failed removal leaves rejected attempt unknown and blocks a second POST', async () => {
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 422))
+    .mockResolvedValueOnce(response(null, 404))
+  const originalSetItem = Storage.prototype.setItem
+  const setSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, name, value) {
+    if (value.includes('submissionRejected')) throw new Error('write disabled')
+    return originalSetItem.call(this, name, value)
+  })
+  const removeSpy = jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+    throw new Error('removal disabled')
+  })
+  try {
+    const store = makeStore()
+    expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
+    expect(store.getState().payment.phase).toBe('unknown')
+    expect(readPaymentRecovery()?.idempotencyKey).toBe(key)
+    expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(false)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  } finally { setSpy.mockRestore(); removeSpy.mockRestore() }
+})
+
+test('ambiguous POST plus 404 never uses the rejected-only recovery path', async () => {
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 503))
+    .mockResolvedValueOnce(response(null, 404))
+  const store = makeStore()
+  expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
+  expect(store.getState().payment.phase).toBe('unknown')
+  expect(readPaymentRecovery()?.idempotencyKey).toBe(key)
+  expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(false)
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+test('a rejected POST with unavailable status retains the key across refresh', async () => {
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 409))
+    .mockResolvedValueOnce(response(null, 503))
+  const store = makeStore()
+  expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
+  expect(store.getState().payment.phase).toBe('unknown')
+  expect(readPaymentRecovery()).toMatchObject({ idempotencyKey: key, submissionRejected: true })
+  const refreshed = makeStore(true)
+  expect(refreshed.getState().payment.phase).toBe('recovering')
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 404))
+  await reconcilePayment(refreshed.dispatch, refreshed.getState)
+  expect(refreshed.getState().payment.phase).toBe('rejected')
+  expect(readPaymentRecovery()).toBeNull()
+})
+
+test('a rejected POST that already has a checkout keeps the authoritative status', async () => {
+  jest.mocked(fetch).mockResolvedValueOnce(response(null, 409))
+    .mockResolvedValueOnce(response({ reference, paymentStatus: 'APPROVED', fulfillmentStatus: 'STOCK_UNAVAILABLE' }))
+  const store = makeStore()
+  expect(await submitPayment(prepared, quote, store.dispatch, readyState(store))).toBe(true)
+  expect(store.getState().payment).toMatchObject({
+    phase: 'resolved', paymentStatus: 'APPROVED', fulfillmentStatus: 'STOCK_UNAVAILABLE',
+  })
   expect(readPaymentRecovery()?.idempotencyKey).toBe(key)
 })
 

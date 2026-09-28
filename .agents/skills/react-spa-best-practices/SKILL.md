@@ -52,7 +52,7 @@ The [field guide](references/field-guide.md) expands these rules with rationale,
 2. Separate pure display from interaction and I/O boundaries; choose state ownership before adding hooks or Redux.
 3. Implement semantic forms and accessible state feedback, then prove failure, retry, and refresh behavior.
 4. Profile an actual problem before memoizing; inspect bundle/image cost and test narrow-screen rendering.
-5. Run build/lint and user-visible tests available in the repository; state clearly if frontend Jest is not yet configured.
+5. Run build/lint and the configured frontend Jest user-visible tests; report measured coverage and distinguish DOM mocks from real-browser evidence.
 
 ## Output Contract
 Report state ownership, server-authoritative fields, interaction/error states, verification commands, performance evidence, and unresolved tradeoffs.

@@ -10,17 +10,20 @@ import {
 } from './cardForm'
 import type { CardFormErrors, CardFormField, CardFormValues, TokenizedCardDelivery } from './cardForm'
 import './CardDeliveryDialog.css'
+import { readContactProgress, writeContactProgress } from '../../app/contactProgress'
+import { useAppSelector } from '../../app/hooks'
 
-interface Props { onPrepared: (values: TokenizedCardDelivery) => void }
+interface Props { onPrepared: (values: TokenizedCardDelivery) => void; onClose?: () => void }
 
-function CardDeliveryDialog({ onPrepared }: Props) {
+function CardDeliveryDialog({ onPrepared, onClose }: Props) {
   const dispatch = useAppDispatch()
+  const productId = useAppSelector((state) => state.checkout.productId)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const tokenControllerRef = useRef<AbortController | null>(null)
   const submittingRef = useRef(false)
-  const [values, setValues] = useState<CardFormValues>(emptyCardForm)
+  const [values, setValues] = useState<CardFormValues>(() => ({ ...emptyCardForm, ...readContactProgress(productId) }))
   const [visited, setVisited] = useState<Partial<Record<CardFormField, boolean>>>({})
   const [submitted, setSubmitted] = useState(false)
   const [terms, setTerms] = useState<ConsentTerms | null>(null)
@@ -67,7 +70,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
 
   function close() {
     tokenControllerRef.current?.abort()
-    dispatch(productReturnRequested())
+    if (onClose) onClose()
+    else dispatch(productReturnRequested())
   }
 
   function changeText(event: ChangeEvent<HTMLInputElement>) {
@@ -79,6 +83,9 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       return
     }
     setValues((previous) => ({ ...previous, [field]: value }))
+    if (field === 'customerEmail' || field === 'recipientName' || field === 'addressLine' || field === 'city') {
+      writeContactProgress(productId, { ...values, [field]: value })
+    }
   }
 
   function markVisited(event: ChangeEvent<HTMLInputElement>) {
@@ -134,7 +141,9 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       if (controller.signal.aborted) return
       setMessage(error instanceof TokenizationError && error.reason === 'configuration'
         ? 'La tokenización no está configurada. Contacta a soporte.'
-        : 'No pudimos proteger la tarjeta. Verifica la conexión e inténtalo de nuevo.')
+        : error instanceof TokenizationError && error.reason === 'invalid_card'
+          ? 'La tarjeta fue rechazada. Revisa sus datos o utiliza otra tarjeta.'
+          : 'No pudimos proteger la tarjeta porque el servicio no está disponible. Inténtalo de nuevo más tarde.')
     } finally {
       submittingRef.current = false
       setSubmitting(false)
@@ -207,7 +216,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
           {errorFor('dataAccepted') && <p className="card-field__error" id="card-data-error">{errorFor('dataAccepted')}</p>}
         </>}
       </fieldset>
-      <div className="card-dialog__actions"><button type="button" className="secondary-button" onClick={close}>Volver al producto</button>
+      <div className="card-dialog__actions"><button type="button" className="secondary-button" onClick={close}>{onClose ? 'Volver al resumen' : 'Volver al producto'}</button>
         <button type="submit" className="primary-button" disabled={termsStatus !== 'ready' || submitting}>Continuar al resumen</button></div>
     </form>
   </dialog>
