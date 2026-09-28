@@ -105,8 +105,8 @@ const checkoutSlice = createSlice({
   name: 'checkout',
   initialState,
   reducers: {
-    progressRestored(state, action: PayloadAction<{ productId: string; quantity: number }>) {
-      state.step = 'product'
+    progressRestored(state, action: PayloadAction<{ productId: string; quantity: number; step?: 'card' | 'summary' }>) {
+      state.step = action.payload.step ?? 'product'
       state.productId = action.payload.productId
       state.quantity = action.payload.quantity
     },
@@ -195,7 +195,7 @@ const checkoutSlice = createSlice({
         state.catalogError = action.payload ?? safeCatalogError()
       })
       .addCase(loadProduct.pending, (state, action) => {
-        if (state.step !== 'product' || state.productId !== action.meta.arg)
+        if (!['product', 'card'].includes(state.step) || state.productId !== action.meta.arg)
           return
         state.productStatus = 'loading'
         state.productError = null
@@ -238,7 +238,7 @@ const checkoutSlice = createSlice({
       })
       .addCase(loadQuote.pending, (state, action) => {
         if (
-          state.step !== 'product' ||
+          !['product', 'card'].includes(state.step) ||
           state.productId !== action.meta.arg.productId ||
           state.product?.id !== state.productId
         ) return

@@ -3,8 +3,10 @@ import {
   Controller,
   Get,
   Header,
+  Logger,
   Post,
   ServiceUnavailableException,
+  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -14,7 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { IsString, Matches, MaxLength } from 'class-validator';
-import { SandboxCardTokenization } from '../../outbound/payment/sandbox-card-tokenization';
+import { CardTokenizationUnavailable, SandboxCardTokenization } from '../../outbound/payment/sandbox-card-tokenization';
 import { TokenizationRateLimitGuard } from './tokenization-rate-limit.guard';
 
 export class EncryptedCardDto {
@@ -31,6 +33,7 @@ export class EncryptedCardDto {
 @Controller('checkout')
 @UseGuards(TokenizationRateLimitGuard)
 export class CardTokenizationController {
+  private readonly logger = new Logger(CardTokenizationController.name);
   constructor(private readonly tokenization: SandboxCardTokenization) {}
 
   @Get('tokenization-key')
@@ -45,7 +48,8 @@ export class CardTokenizationController {
   async key(): Promise<{ publicKey: string }> {
     try {
       return { publicKey: await this.tokenization.encryptionKey() };
-    } catch {
+    } catch (error) {
+      this.logFailure(error);
       throw new ServiceUnavailableException('Card tokenization unavailable');
     }
   }
@@ -55,6 +59,7 @@ export class CardTokenizationController {
   @ApiOperation({ summary: 'Relay only a browser-encrypted compact JWE' })
   @ApiResponse({ status: 201, description: 'Opaque card token only' })
   @ApiResponse({ status: 400, description: 'Invalid encrypted payload' })
+  @ApiResponse({ status: 422, description: 'Card details rejected' })
   @ApiResponse({ status: 503, description: 'Tokenization unavailable' })
   @ApiResponse({
     status: 429,
@@ -63,8 +68,19 @@ export class CardTokenizationController {
   async cardToken(@Body() body: EncryptedCardDto): Promise<{ token: string }> {
     try {
       return { token: await this.tokenization.tokenize(body.payload) };
-    } catch {
+    } catch (error) {
+      this.logFailure(error);
+      if (error instanceof CardTokenizationUnavailable && error.reason === 'upstream_validation')
+        throw new UnprocessableEntityException('Card details were rejected');
       throw new ServiceUnavailableException('Card tokenization unavailable');
     }
+  }
+
+  private logFailure(error: unknown): void {
+    if (error instanceof CardTokenizationUnavailable) {
+      this.logger.warn(`Tokenization ${error.stage}: ${error.reason}${error.upstreamStatus === undefined ? '' : ` (${error.upstreamStatus})`}`);
+      return;
+    }
+    this.logger.warn('Tokenization unexpected failure');
   }
 }
