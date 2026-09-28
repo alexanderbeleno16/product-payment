@@ -1,6 +1,6 @@
 # React SPA field guide
 
-This is operational guidance for React + TypeScript in the Vite `frontend/` scaffold. It is not evidence that routing, Redux, Jest, or an API client has already been installed. Each rule is a review question and should be applied only when the change touches that concern.
+This is operational guidance for the React + TypeScript Vite SPA. Redux Toolkit, Jest, and API clients are now installed; that fact alone does not prove correct behavior. Each rule is a review question and should be applied only when the change touches that concern.
 
 ## Priority map
 

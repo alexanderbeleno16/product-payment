@@ -49,7 +49,7 @@ The brief requires more than 80% coverage for both apps with Jest. Measure separ
 
 ### R10 — Report constraints and unavailable checks
 
-Record which tests ran, exact commands, failures, skips, flaky behavior, and environmental gaps. The current frontend scaffold lacks Jest; until installed and verified, frontend coverage is unavailable. Do not imply backend tests satisfy a frontend requirement.
+Record which tests ran, exact commands, failures, skips, flaky behavior, and environmental gaps. Frontend Jest is configured in `frontend/jest.config.cjs`; run it and report the measured result independently of backend coverage. Do not imply backend tests satisfy a frontend requirement.
 
 ## Example acceptance matrix
 

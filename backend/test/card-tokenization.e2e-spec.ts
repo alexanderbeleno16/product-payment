@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { CardTokenizationController } from '../src/adapters/inbound/http/card-tokenization.controller';
-import { SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
+import { CardTokenizationUnavailable, SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
 import { TokenizationRateLimitGuard } from '../src/adapters/inbound/http/tokenization-rate-limit.guard';
 
 const header = Buffer.from(
@@ -87,6 +87,16 @@ describe('Same-origin card-tokenization HTTP boundary', () => {
     expect(
       JSON.stringify(keyResponse.body) + JSON.stringify(tokenResponse.body),
     ).not.toContain('remote-sensitive-body');
+  });
+
+  it('maps a provider card-validation rejection to safe 422 without exposing details', async () => {
+    tokenize.mockRejectedValue(new CardTokenizationUnavailable('token', 'upstream_validation', 422));
+    const result = await request(app.getHttpServer())
+      .post('/checkout/card-tokens')
+      .send({ payload })
+      .expect(422);
+    expect(JSON.stringify(result.body)).not.toContain(payload);
+    expect(result.body.message).toBe('Card details were rejected');
   });
 
   it('limits a burst before validation or outbound tokenization, ignoring forwarded IP', async () => {
