@@ -1,0 +1,104 @@
+name: Deploy AWS
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: shopifast-aws-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: checkout
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: checkout_quality_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U checkout -d checkout_quality_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: '452841897372'
+      ECR_REPOSITORY: shopifast-api
+      ECS_CLUSTER: default
+      ECS_SERVICE_ARN: arn:aws:ecs:us-east-1:452841897372:service/default/shopifast-api
+      ECS_TASK_SECURITY_GROUP: sg-032a491dc43dd28ff
+      ECS_TASK_SUBNET: subnet-0ac3957156f897a4c
+      SPA_BUCKET: shopifast-spa-452841897372-us-east-1
+      CLOUDFRONT_DISTRIBUTION: E3GEJEN114KR9O
+      CHECKOUT_TEST_DATABASE_URL: postgresql://checkout@127.0.0.1:5432/checkout_quality_test
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+      - name: Verify frontend
+        working-directory: frontend
+        run: npm ci && npm run build && npm run lint && npm run test:coverage
+      - name: Verify backend
+        working-directory: backend
+        run: npm ci && npm run build && npm run lint && npm run test:cov -- --runInBand --coverageReporters=text-summary && npm run test:e2e -- --runInBand
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::452841897372:role/shopifast-github-deploy
+          aws-region: us-east-1
+      - name: Install current AWS CLI
+        run: |
+          curl --fail --silent --show-error https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install --update
+          aws --version
+      - name: Publish API image
+        env:
+          IMAGE: 452841897372.dkr.ecr.us-east-1.amazonaws.com/shopifast-api:${{ github.sha }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker build --pull -t "$IMAGE" backend
+          docker push "$IMAGE"
+          docker logout "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Migrate database with new image
+        run: |
+          set -euo pipefail
+          current_task_def=$(aws ecs describe-express-gateway-service --service-arn "$ECS_SERVICE_ARN" --query 'service.activeConfigurations[0].taskDefinitionArn' --output text)
+          aws ecs describe-task-definition --task-definition "$current_task_def" --query taskDefinition --output json > /tmp/current-task.json
+          jq --arg image "$IMAGE" '{family,taskRoleArn,executionRoleArn,networkMode,containerDefinitions,volumes,placementConstraints,requiresCompatibilities,cpu,memory,runtimePlatform,ephemeralStorage} | with_entries(select(.value != null)) | .containerDefinitions |= map(if .name == "Main" then .image = $image else . end)' /tmp/current-task.json > /tmp/migrator-task.json
+          task_def=$(aws ecs register-task-definition --cli-input-json file:///tmp/migrator-task.json --query 'taskDefinition.taskDefinitionArn' --output text)
+          task_arn=$(aws ecs run-task --cluster "$ECS_CLUSTER" --launch-type FARGATE --task-definition "$task_def" --network-configuration "awsvpcConfiguration={subnets=[$ECS_TASK_SUBNET],securityGroups=[$ECS_TASK_SECURITY_GROUP],assignPublicIp=ENABLED}" --overrides 'containerOverrides=[{name=Main,command=[node,dist/adapters/outbound/persistence/migrate.js]}]' --query 'tasks[0].taskArn' --output text)
+          test "$task_arn" != None
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$task_arn"
+          exit_code=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$task_arn" --query 'tasks[0].containers[?name==`Main`].exitCode | [0]' --output text)
+          test "$exit_code" = 0
+          echo "DEPLOY_TASK_DEF=$task_def" >> "$GITHUB_ENV"
+      - name: Deploy API and SPA
+        run: |
+          set -euo pipefail
+          aws ecs update-express-gateway-service --service-arn "$ECS_SERVICE_ARN" --task-definition-arn "$DEPLOY_TASK_DEF" >/dev/null
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services shopifast-api
+          aws s3 sync frontend/dist "s3://$SPA_BUCKET/" --delete
+          aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION" --paths '/*' >/dev/null
+          curl --fail --silent --show-error --max-time 20 "https://d12hv8vhtndguc.cloudfront.net/products" -o /tmp/products.json
+          jq -e 'type == "array" and length > 0' /tmp/products.json >/dev/null
