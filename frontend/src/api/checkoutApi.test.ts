@@ -35,7 +35,7 @@ test('reads the seeded product with no browser cache', async () => {
     product,
   )
   expect(fetchMock).toHaveBeenCalledWith(`/products/${HEADPHONES_PRODUCT_ID}`, {
-    signal,
+    signal: expect.any(AbortSignal),
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })
@@ -52,7 +52,7 @@ test('reads the product catalog and rejects malformed list responses', async () 
   await expect(getProducts(signal)).rejects.toThrow('Invalid product list response')
   await expect(getProducts(signal)).rejects.toThrow('Invalid product list response')
   expect(fetchMock).toHaveBeenCalledWith('/products', {
-    signal,
+    signal: expect.any(AbortSignal),
     headers: { Accept: 'application/json' },
     cache: 'no-store',
   })
@@ -79,7 +79,7 @@ test('requests the quote for the selected quantity and rejects mismatched data',
   )
   expect(fetchMock).toHaveBeenCalledWith(
     `/checkout/quote?productId=${HEADPHONES_PRODUCT_ID}&quantity=2`,
-    expect.objectContaining({ signal, cache: 'no-store' }),
+    expect.objectContaining({ signal: expect.any(AbortSignal), cache: 'no-store' }),
   )
 })
 
@@ -127,6 +127,65 @@ test('reads both current consent documents and rejects malformed or insecure lin
   await expect(getConsentTerms(signal)).rejects.toThrow('Invalid consent response')
   await expect(getConsentTerms(signal)).rejects.toThrow('Invalid consent response')
   expect(fetchMock).toHaveBeenCalledWith('/checkout/consents', {
-    signal, headers: { Accept: 'application/json' }, cache: 'no-store',
+    signal: expect.any(AbortSignal), headers: { Accept: 'application/json' }, cache: 'no-store',
   })
+})
+
+test('times out a catalog request stalled before response headers', async () => {
+  jest.useFakeTimers()
+  try {
+    jest.mocked(fetch).mockImplementation(() => new Promise<Response>(() => undefined))
+    const request = getProducts(new AbortController().signal)
+    const result = expect(request).rejects.toMatchObject({ name: 'TimeoutError' })
+    const fetchSignal = jest.mocked(fetch).mock.calls[0][1]?.signal
+
+    await jest.advanceTimersByTimeAsync(15_000)
+
+    await result
+    expect(fetchSignal?.aborted).toBe(true)
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('times out a product request stalled while reading its JSON body', async () => {
+  jest.useFakeTimers()
+  try {
+    jest.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => new Promise<unknown>(() => undefined),
+    } as Response)
+    const request = getProduct(HEADPHONES_PRODUCT_ID, new AbortController().signal)
+    const result = expect(request).rejects.toMatchObject({ name: 'TimeoutError' })
+    const fetchSignal = jest.mocked(fetch).mock.calls[0][1]?.signal
+
+    await jest.advanceTimersByTimeAsync(15_000)
+
+    await result
+    expect(fetchSignal?.aborted).toBe(true)
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('caller cancellation interrupts a quote response body before the deadline', async () => {
+  jest.useFakeTimers()
+  try {
+    jest.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => new Promise<unknown>(() => undefined),
+    } as Response)
+    const controller = new AbortController()
+    const request = getQuote(HEADPHONES_PRODUCT_ID, 1, controller.signal)
+    const fetchSignal = jest.mocked(fetch).mock.calls[0][1]?.signal
+    const reason = new DOMException('Request cancelled', 'AbortError')
+
+    controller.abort(reason)
+
+    await expect(request).rejects.toBe(reason)
+    expect(fetchSignal?.aborted).toBe(true)
+    expect(jest.getTimerCount()).toBe(0)
+  } finally {
+    jest.useRealTimers()
+  }
 })
