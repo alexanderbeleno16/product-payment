@@ -85,8 +85,8 @@ export default function PaymentStatusScreen() {
         <div><strong>{product.name}</strong><span>Cantidad: {payment.quantity}</span></div>
         {quote && <strong className="payment-status-product__total">{formatMoney(quote.totalCents)}</strong>}
       </section>}
-      <section className={`payment-status-card payment-status-card--${fulfilled ? 'approved' : stockException ? 'attention' : failed || rejected ? 'failed' : 'pending'}`} aria-labelledby="payment-status-title">
-        <span className="payment-status-icon" aria-hidden="true">{fulfilled ? '✓' : stockException ? '!' : failed || rejected ? '×' : '⌛'}</span>
+      <section className={`payment-status-card payment-status-card--${fulfilled ? 'approved' : stockException || storageError ? 'attention' : failed || rejected ? 'failed' : 'pending'}`} aria-labelledby="payment-status-title">
+        <span className="payment-status-icon" aria-hidden="true">{fulfilled ? '✓' : stockException || storageError ? '!' : failed || rejected ? '×' : '⌛'}</span>
         <p className="payment-status-pill">{fulfilled ? 'Pago aprobado' : stockException ? 'Pago aprobado · Entrega pendiente' : approved ? 'Pago aprobado · Entrega en proceso' : failed ? 'Pago no aprobado' : rejected ? 'Pago no iniciado' : storageError ? unreadableAttempt ? 'Pago sin verificar' : 'Pago no enviado' : unknown ? 'Resultado por confirmar' : 'Confirmación en curso'}</p>
         <h2 id="payment-status-title">
           {fulfilled ? 'Entrega confirmada' : stockException ? 'Tu pedido necesita atención' :
