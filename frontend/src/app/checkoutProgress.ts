@@ -7,7 +7,7 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 export interface SavedCheckoutProgress {
   productId: string
   quantity: number
-  step?: 'card'
+  step?: 'card' | 'summary'
 }
 
 export function readCheckoutProgress(): SavedCheckoutProgress | null {
@@ -19,11 +19,12 @@ export function readCheckoutProgress(): SavedCheckoutProgress | null {
     const record = value as Record<string, unknown>
     const legacy = Object.keys(record).sort().join(',') === 'productId,quantity,version' && record.version === 1
     const current = Object.keys(record).sort().join(',') === 'productId,quantity,step,version' &&
-      record.version === 2 && record.step === 'card'
+      record.version === 2 && (record.step === 'card' || record.step === 'summary')
     if ((!legacy && !current) || typeof record.productId !== 'string' ||
       !UUID_V4.test(record.productId) || typeof record.quantity !== 'number' ||
       !Number.isSafeInteger(record.quantity) || record.quantity < 1) return null
-    return { productId: record.productId, quantity: record.quantity, ...(current ? { step: 'card' as const } : {}) }
+    return { productId: record.productId, quantity: record.quantity,
+      ...(current ? { step: record.step as 'card' | 'summary' } : {}) }
   } catch {
     return null
   }
@@ -38,9 +39,9 @@ export function writeCheckoutProgress(state: RootState): void {
       return
     }
     if (state.payment.phase === 'resolved') clearContactProgress()
-    const inCard = step === 'card'
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(inCard ?
-      { version: 2, productId, quantity, step: 'card' } : { version: 1, productId, quantity }))
+    const recoverableStep = step === 'card' || step === 'summary' ? step : null
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(recoverableStep ?
+      { version: 2, productId, quantity, step: recoverableStep } : { version: 1, productId, quantity }))
   } catch {
     // Storage may be unavailable; checkout still works without refresh recovery.
   }

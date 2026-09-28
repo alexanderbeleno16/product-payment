@@ -105,7 +105,7 @@ const checkoutSlice = createSlice({
   name: 'checkout',
   initialState,
   reducers: {
-    progressRestored(state, action: PayloadAction<{ productId: string; quantity: number; step?: 'card' }>) {
+    progressRestored(state, action: PayloadAction<{ productId: string; quantity: number; step?: 'card' | 'summary' }>) {
       state.step = action.payload.step ?? 'product'
       state.productId = action.payload.productId
       state.quantity = action.payload.quantity
