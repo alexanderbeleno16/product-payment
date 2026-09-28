@@ -10,6 +10,7 @@ import { formatMoney } from '../../lib/formatMoney'
 import './PaymentStatusScreen.css'
 
 const MAX_AUTOMATIC_CHECKS = 3
+const AUTOMATIC_CHECK_DELAY_MS = 2500
 
 export default function PaymentStatusScreen() {
   const dispatch = useAppDispatch()
@@ -33,13 +34,10 @@ export default function PaymentStatusScreen() {
       headingRef.current?.focus()
   }, [payment.phase])
   useEffect(() => {
-    if (payment.phase === 'recovering') {
-      void reconcilePayment(dispatch, store.getState)
+    if (!['recovering', 'pending', 'unknown'].includes(payment.phase) ||
+      payment.checks >= MAX_AUTOMATIC_CHECKS)
       return
-    }
-    if (!['pending', 'unknown'].includes(payment.phase) || payment.checks >= MAX_AUTOMATIC_CHECKS)
-      return
-    const timer = window.setTimeout(() => { void reconcilePayment(dispatch, store.getState) }, 2500)
+    const timer = window.setTimeout(() => { void reconcilePayment(dispatch, store.getState) }, AUTOMATIC_CHECK_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [dispatch, store, payment.phase, payment.checks])
 
@@ -47,6 +45,10 @@ export default function PaymentStatusScreen() {
   const fulfilled = approved && payment.fulfillmentStatus === 'CREATED'
   const stockException = approved && payment.fulfillmentStatus === 'STOCK_UNAVAILABLE'
   const failed = payment.phase === 'resolved' && !approved
+  const rejected = payment.phase === 'rejected'
+  const storageError = payment.phase === 'storage_error'
+  const pending = payment.paymentStatus === 'PENDING' || payment.phase === 'pending'
+  const unknown = payment.phase === 'unknown'
   const unreadableAttempt = payment.phase === 'storage_error' && hasPaymentRecoveryRecord()
   const canReturn = payment.phase === 'rejected' || failed || fulfilled ||
     (payment.phase === 'storage_error' && !unreadableAttempt)
@@ -83,29 +85,30 @@ export default function PaymentStatusScreen() {
         <div><strong>{product.name}</strong><span>Cantidad: {payment.quantity}</span></div>
         {quote && <strong className="payment-status-product__total">{formatMoney(quote.totalCents)}</strong>}
       </section>}
-      <section className={`payment-status-card payment-status-card--${fulfilled ? 'approved' : stockException ? 'attention' : failed || payment.phase === 'rejected' ? 'failed' : 'pending'}`} aria-labelledby="payment-status-title">
-        <span className="payment-status-icon" aria-hidden="true">{fulfilled ? '✓' : stockException ? '!' : failed || payment.phase === 'rejected' ? '×' : '⌛'}</span>
-        <p className="payment-status-pill">{fulfilled ? 'Pago aprobado' : stockException ? 'Pago aprobado · Entrega pendiente' : failed || payment.phase === 'rejected' ? 'Pago no aprobado' : 'Confirmación en curso'}</p>
+      <section className={`payment-status-card payment-status-card--${fulfilled ? 'approved' : stockException ? 'attention' : failed || rejected ? 'failed' : 'pending'}`} aria-labelledby="payment-status-title">
+        <span className="payment-status-icon" aria-hidden="true">{fulfilled ? '✓' : stockException ? '!' : failed || rejected ? '×' : '⌛'}</span>
+        <p className="payment-status-pill">{fulfilled ? 'Pago aprobado' : stockException ? 'Pago aprobado · Entrega pendiente' : approved ? 'Pago aprobado · Entrega en proceso' : failed ? 'Pago no aprobado' : rejected ? 'Pago no iniciado' : storageError ? unreadableAttempt ? 'Pago sin verificar' : 'Pago no enviado' : unknown ? 'Resultado por confirmar' : 'Confirmación en curso'}</p>
         <h2 id="payment-status-title">
           {fulfilled ? 'Entrega confirmada' : stockException ? 'Tu pedido necesita atención' :
-            approved ? 'Pago aprobado' : failed ? 'Pago no aprobado' :
-            payment.phase === 'rejected' ? 'No se inició el pago' :
-            payment.phase === 'storage_error' ? 'No se pudo continuar' : 'Verificando tu pago'}
+            approved ? 'Entrega en proceso' : failed ? 'Pago no aprobado' :
+            rejected ? 'No se inició el pago' :
+            storageError ? 'No se pudo continuar' : unknown ? 'Resultado aún desconocido' :
+            pending ? 'Confirmando el pago' : 'Verificando tu pago'}
         </h2>
         <div className="payment-status-message" role="status" aria-live="polite">
-          {payment.phase === 'submitting' && <p>Enviando la solicitud de pago…</p>}
-          {(payment.phase === 'checking' || payment.phase === 'recovering') && <p>Consultando el estado de tu pago…</p>}
-          {payment.phase === 'pending' && !approved && <p>Recibimos tu solicitud. El pago sigue pendiente de confirmación. No intentes pagar de nuevo mientras esperamos el resultado.</p>}
-          {payment.phase === 'unknown' && !approved && <p>No pudimos confirmar el resultado todavía. Conservamos tu solicitud para consultarla sin cobrar de nuevo.</p>}
-          {payment.phase === 'unknown' && approved && <p>No pudimos actualizar la entrega todavía. Conservamos la referencia para volver a consultarla.</p>}
           {fulfilled && <p>Pago aprobado y entrega creada.</p>}
           {stockException && <p>El pago fue aprobado, pero no hubo existencias para crear la entrega. Conserva la referencia y contacta a soporte para resolver el pedido. No hagas otra compra de este producto.</p>}
           {approved && !fulfilled && !stockException && <p>Pago aprobado. La entrega aún no está confirmada.</p>}
           {failed && <p>El pago no fue aprobado. Estado: {payment.paymentStatus}.</p>}
-          {payment.phase === 'rejected' && <p>La solicitud fue rechazada antes de iniciarse el pago. Vuelve al producto y revisa el precio, la disponibilidad y los datos.</p>}
-          {payment.phase === 'storage_error' && <p>{unreadableAttempt
+          {rejected && <p>La solicitud fue rechazada antes de iniciarse el pago. Vuelve al producto y revisa el precio, la disponibilidad y los datos.</p>}
+          {storageError && <p>{unreadableAttempt
             ? 'Existe una solicitud previa que no podemos leer con seguridad. No enviaremos otro pago. Conserva esta sesión y contacta a soporte.'
             : 'No pudimos guardar la referencia de recuperación. No enviamos el pago.'}</p>}
+          {!approved && !failed && !rejected && !storageError && (unknown
+            ? <p>No pudimos confirmar el resultado todavía. Conservamos tu solicitud para consultarla sin cobrar de nuevo.</p>
+            : pending
+              ? <p>Recibimos tu solicitud. El pago sigue pendiente de confirmación. No intentes pagar de nuevo mientras esperamos el resultado.</p>
+              : <p>{payment.phase === 'submitting' ? 'Enviando la solicitud de pago…' : 'Consultando el estado de tu pago…'}</p>)}
         </div>
         {payment.reference && <p className="payment-status-reference"><span>Referencia de seguimiento</span><strong>{payment.reference}</strong></p>}
       </section>
