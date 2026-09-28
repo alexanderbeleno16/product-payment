@@ -13,6 +13,7 @@ module.exports = {
       },
     ],
   },
+  transformIgnorePatterns: ['/node_modules/(?!jose/)'],
   moduleNameMapper: {
     '\\.(css|png|svg|webp)$': '<rootDir>/test/assetMock.cjs',
   },
@@ -22,4 +23,7 @@ module.exports = {
     '!src/**/*.test.{ts,tsx}',
     '!src/setupTests.ts',
   ],
+  coverageThreshold: {
+    global: { statements: 80.01, branches: 80.01, functions: 80.01, lines: 80.01 },
+  },
 }

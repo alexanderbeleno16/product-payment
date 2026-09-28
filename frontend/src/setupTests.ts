@@ -4,5 +4,7 @@ import '@testing-library/jest-dom'
 jest.mock('./api/apiBaseUrl', () => ({ apiBaseUrl: '' }))
 
 // jsdom does not implement the native dialog methods.
-HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', '') }
-HTMLDialogElement.prototype.close = function close() { this.removeAttribute('open') }
+if (typeof HTMLDialogElement !== 'undefined') {
+  HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function close() { this.removeAttribute('open') }
+}
