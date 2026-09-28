@@ -51,7 +51,7 @@ async function completeForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Nombre en la tarjeta'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Mes de vencimiento (MM)'), '12')
   await user.type(screen.getByLabelText('Año de vencimiento (AA)'), '28')
-  await user.type(screen.getByLabelText('Código de seguridad'), '123')
+  await user.type(screen.getByLabelText('Código de seguridad (CVC)'), '123')
   await user.type(screen.getByLabelText('Correo electrónico'), 'test@example.test')
   await user.type(screen.getByLabelText('Nombre de quien recibe'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Dirección de entrega'), 'Calle de Prueba 123')
@@ -102,12 +102,38 @@ test('validates form, detects brand, masks preview, and never displays the secur
   expect(screen.getByLabelText('Número de tarjeta')).toHaveFocus()
   expect(onPrepared).not.toHaveBeenCalled()
   await user.type(screen.getByLabelText('Número de tarjeta'), '4')
-  expect(screen.getByText('Visa', { selector: 'p' })).toBeVisible()
+  expect(screen.getByText('Visa', { selector: '.card-brand' })).toBeVisible()
   expect(document.querySelector('.card-preview__number')?.textContent).toContain('4•••')
-  await user.type(screen.getByLabelText('Código de seguridad'), String(100 + 23))
+  await user.type(screen.getByLabelText('Código de seguridad (CVC)'), String(100 + 23))
   expect(document.querySelector('.card-preview')).toHaveClass('card-preview--reverse')
   expect(document.querySelector('.card-preview__code')).toHaveTextContent('•••')
   expect(document.querySelector('.card-preview__code')).not.toHaveTextContent(String(100 + 23))
+})
+
+test('keeps native group legends and a live brand beside the card-number label', async () => {
+  globalThis.fetch = jest.fn(async () => response(consents))
+  const user = userEvent.setup()
+  mount()
+  await screen.findByRole('link', { name: 'términos de uso' })
+
+  for (const title of ['Datos de la tarjeta', 'Contacto y entrega', 'Autorizaciones']) {
+    const group = screen.getByRole('group', { name: title })
+    expect(group.querySelector('legend')).toHaveTextContent(title)
+  }
+
+  const number = screen.getByLabelText('Número de tarjeta')
+  const heading = number.previousElementSibling as HTMLElement
+  expect(heading).toHaveClass('card-field__heading')
+  expect(heading.querySelector('label')).toHaveTextContent('Número de tarjeta')
+  expect(heading.querySelector('.card-brand')).toHaveTextContent('Visa o Mastercard')
+  await user.click(heading.querySelector('label') as HTMLElement)
+  expect(number).toHaveFocus()
+  await user.type(number, '4')
+  expect(heading.querySelector('.card-brand')).toHaveTextContent('Visa')
+  await user.clear(number)
+  await user.type(number, '2221')
+  expect(heading.querySelector('.card-brand')).toHaveTextContent('Mastercard')
+  expect(screen.getByLabelText('Código de seguridad (CVC)')).toHaveAttribute('type', 'password')
 })
 
 test('submits only after valid delivery and both explicit consents', async () => {
@@ -120,7 +146,7 @@ test('submits only after valid delivery and both explicit consents', async () =>
   await user.type(screen.getByLabelText('Nombre en la tarjeta'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Mes de vencimiento (MM)'), '12')
   await user.type(screen.getByLabelText('Año de vencimiento (AA)'), '28')
-  await user.type(screen.getByLabelText('Código de seguridad'), String(100 + 23))
+  await user.type(screen.getByLabelText('Código de seguridad (CVC)'), String(100 + 23))
   await user.type(screen.getByLabelText('Correo electrónico'), 'test@example.test')
   await user.type(screen.getByLabelText('Nombre de quien recibe'), 'Persona de Prueba')
   await user.type(screen.getByLabelText('Dirección de entrega'), 'Calle de Prueba 123')
@@ -136,6 +162,8 @@ test('submits only after valid delivery and both explicit consents', async () =>
     cardToken: 'opaque-test-token',
     cardBrand: 'visa',
     cardLastFour: card.slice(-4),
+    acceptsEndUserPolicy: true,
+    acceptsPersonalDataAuthorization: true,
     consentTokens: { endUserPolicy: consents.endUserPolicy.token, personalDataAuthorization: consents.personalDataAuthorization.token },
   })))
   expect(tokenizationMock).toHaveBeenCalledWith(expect.objectContaining({ number: card }), consents.publicKey, expect.any(AbortSignal))

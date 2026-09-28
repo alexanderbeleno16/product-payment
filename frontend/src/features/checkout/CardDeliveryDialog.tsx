@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { getConsentTerms } from '../../api/checkoutApi'
 import { tokenizeCard, TokenizationError } from '../../api/cardTokenization'
 import type { ConsentTerms } from '../../api/checkoutApi'
@@ -115,6 +115,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
         cardToken,
         cardBrand: brand,
         cardLastFour: values.number.slice(-4),
+        acceptsEndUserPolicy: true,
+        acceptsPersonalDataAuthorization: true,
         customerEmail: values.customerEmail.trim().toLowerCase(),
         delivery: { recipientName: values.recipientName.trim(), addressLine: values.addressLine.trim(), city: values.city.trim() },
         consentTokens: { endUserPolicy: terms.endUserPolicy.token,
@@ -133,9 +135,9 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   }
 
   const input = (name: Exclude<CardFormField, 'policyAccepted' | 'dataAccepted'>,
-    label: string, options: { autoComplete?: string; inputMode?: 'numeric' | 'email' | 'text'; maxLength?: number; type?: string } = {}) => (
+    label: string, options: { autoComplete?: string; inputMode?: 'numeric' | 'email' | 'text'; maxLength?: number; type?: string; trailing?: ReactNode } = {}) => (
     <div className="card-field">
-      <label htmlFor={`card-${name}`}>{label}</label>
+      <div className="card-field__heading"><label htmlFor={`card-${name}`}>{label}</label>{options.trailing}</div>
       <input id={`card-${name}`} name={name} value={values[name]} onChange={changeText}
         autoComplete={options.autoComplete ?? 'off'} inputMode={options.inputMode}
         maxLength={options.maxLength} type={options.type ?? 'text'}
@@ -156,13 +158,13 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       <div className="card-dialog__columns">
         <div className="card-dialog__fields">
           <fieldset><legend>Datos de la tarjeta</legend>
-            {input('number', 'Número de tarjeta', { autoComplete: 'cc-number', inputMode: 'numeric', maxLength: 16 })}
-            <p className="card-brand" aria-live="polite">{brand === 'visa' ? 'Visa' : brand === 'mastercard' ? 'Mastercard' : 'Visa o Mastercard'}</p>
+            {input('number', 'Número de tarjeta', { autoComplete: 'cc-number', inputMode: 'numeric', maxLength: 16,
+              trailing: <span className="card-brand" aria-live="polite">{brand === 'visa' ? 'Visa' : brand === 'mastercard' ? 'Mastercard' : 'Visa o Mastercard'}</span> })}
             {input('cardHolder', 'Nombre en la tarjeta', { autoComplete: 'cc-name', maxLength: 120 })}
             <div className="card-dialog__inline">
               {input('expMonth', 'Mes de vencimiento (MM)', { autoComplete: 'cc-exp-month', inputMode: 'numeric', maxLength: 2 })}
               {input('expYear', 'Año de vencimiento (AA)', { autoComplete: 'cc-exp-year', inputMode: 'numeric', maxLength: 2 })}
-              {input('cvc', 'Código de seguridad', { autoComplete: 'cc-csc', inputMode: 'numeric', maxLength: 3, type: 'password' })}
+              {input('cvc', 'Código de seguridad (CVC)', { autoComplete: 'cc-csc', inputMode: 'numeric', maxLength: 3, type: 'password' })}
             </div>
           </fieldset>
           <fieldset><legend>Contacto y entrega</legend>

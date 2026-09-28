@@ -80,9 +80,17 @@ sequenceDiagram
     SPA->>API: GET /checkout/quote
     API-->>SPA: Server-priced quote
     Buyer->>SPA: Enter delivery and card details
-    SPA->>SPA: Validate card format and delivery fields
+    SPA->>API: GET /checkout/consents
+    API-->>SPA: Current policy links, consent tokens, public key
+    Buyer->>SPA: Explicitly accept both current consent documents
+    SPA->>SPA: Validate card, delivery, and both consents
     SPA->>Provider: Tokenize card in browser
     Provider-->>SPA: Payment token
+    SPA->>API: GET /checkout/quote before summary
+    API-->>SPA: Refreshed server-priced quote
+    SPA-->>Buyer: Show non-paying summary and disabled payment action
+    Note over Buyer,SPA: Current frontend stops here; payment submission is planned
+    Buyer->>SPA: Explicitly confirm and pay
     SPA->>API: Submit checkout with token, delivery, and idempotency key
     API->>DB: Look up key and compare canonical checkout fingerprint
     alt Same key and same checkout already exist
@@ -146,7 +154,7 @@ The brief groups stock and delivery updates under both completed and failed outc
 
 The implemented HTTP surface includes read-only `GET /products` (an array with current stock) and `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. The status lookup requires the original idempotency key and returns only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. The [Postman collection](docs/product-payment.postman_collection.json) contains the six buyer-facing requests; the signed event is provider-to-server and deliberately not represented as a manually runnable request. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs. Neither URL is public.
 
-Local Jest evidence on 2026-09-27: `cd frontend && npm run test:coverage` passed 70 tests with 93.00% statements, 88.44% branches, 95.62% functions, and 95.17% lines. With `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 125 tests and measured 90.56% statements, 85.13% branches, 86.82% functions, and 91.27% lines. The PostgreSQL-backed E2E command passed 28 tests. These measurements cover the current partial browser flow and backend; they do not establish live terminal-provider behavior or a deployed callback. Without a configured test database, the PostgreSQL test suites are skipped and backend coverage is lower.
+Local Jest evidence on 2026-09-27: `cd frontend && npm run test:coverage` passed 70 tests with 93.00% statements, 88.52% branches, 95.62% functions, and 95.17% lines. With `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 125 tests and measured 90.56% statements, 85.13% branches, 86.82% functions, and 91.27% lines. The PostgreSQL-backed E2E command passed 28 tests. These measurements cover the current partial browser flow and backend; they do not establish live terminal-provider behavior or a deployed callback. Without a configured test database, the PostgreSQL test suites are skipped and backend coverage is lower.
 
 Backend tests cover duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local rollback on delivery insertion failure. Unit tests cover use-case policy; PostgreSQL integration tests prove atomicity and uniqueness. Live terminal-provider behavior and deployed callback remain unverified. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
 
