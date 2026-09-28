@@ -83,7 +83,7 @@ async function fetchBridge(
     return await Promise.race([
       (async () => {
         const response = await fetch(url, { ...options, signal: controller.signal })
-        if (!response.ok) throw new TokenizationError('unavailable')
+        if (!response.ok) throw new TokenizationError(response.status === 422 ? 'invalid_card' : 'unavailable')
         return (await response.json()) as unknown
       })(),
       aborted,

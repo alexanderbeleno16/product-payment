@@ -78,6 +78,7 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
         idempotencyKey: randomUUID(),
         productId,
         quantity: 1,
+        expectedTotalCents: 1_700_000,
         installments: 1,
         customerEmail: 'buyer@example.com',
         delivery: {
@@ -170,6 +171,44 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
       );
     });
 
+    it('rejects a changed confirmed total before any durable checkout, charge, stock, or delivery effect', async () => {
+      await request(app.getHttpServer())
+        .post('/checkouts')
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          productId,
+          quantity: 1,
+          expectedTotalCents: 1_700_001,
+          installments: 1,
+          customerEmail: 'buyer@example.com',
+          delivery: {
+            recipientName: 'Ada Lovelace',
+            addressLine: '123 Main Street',
+            city: 'Bogota',
+          },
+          cardToken: 'transient-card-token',
+          acceptanceToken: 'transient-terms-token',
+          personalDataToken: 'transient-privacy-token',
+          acceptsEndUserPolicy: true,
+          acceptsPersonalDataAuthorization: true,
+        })
+        .expect(409)
+        .expect(({ body: response }) => {
+          expect(response.message).toBe('QUOTE_CHANGED');
+        });
+      expect(submit).not.toHaveBeenCalled();
+      expect(await dataSource.getRepository(TransactionEntity).count()).toBe(0);
+      expect(await dataSource.getRepository(CustomerEntity).count()).toBe(0);
+      expect(await dataSource.getRepository(DeliveryEntity).count()).toBe(0);
+      expect(
+        (
+          await dataSource
+            .getRepository(ProductEntity)
+            .findOneByOrFail({ id: productId })
+        ).stock,
+      ).toBe(3);
+    });
+
     afterAll(async () => {
       if (app) await app.close();
       if (dataSource?.isInitialized) await dataSource.destroy();
@@ -194,6 +233,7 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
       const body = {
         productId,
         quantity: 1,
+        expectedTotalCents: 1_700_000,
         installments: 1,
         customerEmail: 'buyer@example.com',
         delivery: {

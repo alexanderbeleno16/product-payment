@@ -11,6 +11,8 @@ import {
   PAYMENT_STATUS_READER,
 } from '../src/checkout.tokens';
 import { PaymentEventVerifier } from '../src/adapters/inbound/http/payment-event.verifier';
+import { configureOpenApi } from '../src/openapi';
+import { configureSecurityHeaders } from '../src/security-headers';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -34,6 +36,8 @@ describe('AppController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureSecurityHeaders(app);
+    configureOpenApi(app);
     await app.init();
   });
 
@@ -42,6 +46,23 @@ describe('AppController (e2e)', () => {
       .get('/')
       .expect(200)
       .expect('Hello World!');
+  });
+
+  it('protects successful and error responses without exposing the framework', async () => {
+    for (const [path, status] of [['/', 200], ['/not-found', 404]] as const) {
+      const response = await request(app.getHttpServer()).get(path).expect(status);
+      expect(response.headers['content-security-policy']).toContain("default-src 'self'");
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
+      expect(response.headers['x-frame-options']).toBe('SAMEORIGIN');
+      expect(response.headers['x-powered-by']).toBeUndefined();
+      expect(response.headers['strict-transport-security']).toBeUndefined();
+    }
+  });
+
+  it('keeps local OpenAPI documentation available', async () => {
+    await request(app.getHttpServer()).get('/api').expect(200);
+    await request(app.getHttpServer()).get('/api-json').expect(200);
   });
 
   afterEach(async () => {

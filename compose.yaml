@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql://checkout:${DB_PASSWORD:?Set DB_PASSWORD in the root .env file}@db:5432/checkout
       PORT: "3000"
+      PAYMENT_RECONCILIATION_ENABLED: ${PAYMENT_RECONCILIATION_ENABLED:-false}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

@@ -51,6 +51,7 @@ const checkout: CheckoutTransaction = {
 const body: CreateCheckoutDto = {
   productId,
   quantity: 2,
+  expectedTotalCents: 2_700_000,
   installments: 3,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -104,6 +105,7 @@ describe('CheckoutController HTTP mapping', () => {
     ['PRODUCT_NOT_FOUND', NotFoundException],
     ['INSUFFICIENT_STOCK', ConflictException],
     ['IDEMPOTENCY_CONFLICT', ConflictException],
+    ['QUOTE_CHANGED', ConflictException],
     ['UNSUPPORTED_CURRENCY', UnprocessableEntityException],
   ])(
     'maps %s to an explicit safe HTTP exception',
@@ -148,9 +150,15 @@ describe('CheckoutController HTTP mapping', () => {
       ),
     );
     expect(warning).toHaveBeenCalledWith('Consent terms unavailable: auth');
-    consentTerms.getCurrent.mockRejectedValueOnce(new Error('sensitive upstream response'));
-    await expect(controller.consents()).rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(warning).toHaveBeenLastCalledWith('Consent terms unavailable: unexpected');
+    consentTerms.getCurrent.mockRejectedValueOnce(
+      new Error('sensitive upstream response'),
+    );
+    await expect(controller.consents()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(warning).toHaveBeenLastCalledWith(
+      'Consent terms unavailable: unexpected',
+    );
     expect(JSON.stringify(warning.mock.calls)).not.toContain('sensitive');
     warning.mockRestore();
   });
@@ -169,6 +177,7 @@ describe('CheckoutController HTTP mapping', () => {
         idempotencyKey,
         productId,
         quantity: 2,
+        expectedTotalCents: body.expectedTotalCents,
         installments: 3,
         customerEmail: body.customerEmail,
         delivery: body.delivery,
