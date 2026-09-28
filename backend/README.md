@@ -43,6 +43,8 @@ The API listens at `http://localhost:3000` by default (`PORT` may override it). 
 | `PAYMENT_INTEGRITY_SECRET` | Server-only sandbox integrity secret for amount/reference signing. |
 | `PAYMENT_EVENTS_SECRET` | Separate server-only sandbox events secret for signed callback verification; it is not the private key or integrity secret. |
 
+The tokenization bridge uses only the server-configured exact HTTPS sandbox host and matching public-key family, fixed paths, no redirects, and bounded timeouts. It never decrypts or persists the JWE and never returns remote response bodies. Treat `POST /checkout/card-tokens` as an abuse-sensitive public endpoint: deploy an edge rate limit and monitoring before public exposure; input validation is not an anti-card-testing control. Disable caching for both tokenization routes at every proxy layer. No live card POST was exercised for this bridge.
+
 If `GET /checkout/consents` returns the safe public 503, backend logs emit only a redacted category: `auth`, `timeout`, `invalid_response`, `network`, or `unexpected` for unclassified internal faults. Operators can use that category to narrow configuration or connectivity checks; it does not reveal provider response bodies, keys, tokens, or card data, and it does not establish the cause of any earlier 503.
 
 Wait for PostgreSQL to accept connections before running the migration. Migrations are explicit—runtime synchronization and automatic migration execution are disabled. The seed may be run again: fixed product IDs prevent duplicates and existing stock is not reset.
@@ -92,12 +94,14 @@ The generated scaffold's `GET /` also remains but is excluded from the checkout 
 
 ### Checkout HTTP contract
 
-The routes below return `Cache-Control: no-store` and are described in the generated [local OpenAPI document](http://localhost:3000/api-json). Their prices, fees, references, and payment status are server-owned; no raw card details belong in API requests. The browser must obtain a transient card token directly from Empresa innombrable before `POST /checkouts`.
+The routes below return `Cache-Control: no-store` and are described in the generated [local OpenAPI document](http://localhost:3000/api-json). Their prices, fees, references, and payment status are server-owned; no raw card details belong in API requests. The browser encrypts locally, then obtains a transient card token through fixed-path same-origin API relays before `POST /checkouts`; the API accepts only a compact JWE, not raw card fields.
 
 | Method and path | Input | Success | Expected rejection |
 | --- | --- | --- | --- |
 | `GET /checkout/quote` | Query: `productId` (UUID v4), `quantity` (positive integer string). | `200` with `productId`, `quantity`, `currency`, `unitPriceCents`, `productAmountCents`, `baseFeeCents`, `deliveryFeeCents`, `totalCents`. | `400` invalid input, `404` missing product, `409` insufficient stock, `422` unsupported currency. |
 | `GET /checkout/consents` | No buyer input. | `200` with sandbox `publicKey` and two current consent documents (`token`, `permalink`). | `503` if current documents cannot be read; no remote error details are exposed. |
+| `GET /checkout/tokenization-key` | No buyer input. | `200` with public encryption PEM only. | `503` for unavailable or invalid sandbox response. |
+| `POST /checkout/card-tokens` | JSON `{ "payload": "<compact JWE>" }` only; maximum 4,096 characters. | `201` with opaque `{ "token": "tok_…" }` only. | `400` for invalid shape or unexpected fields; `503` for unavailable or invalid sandbox response. |
 | `POST /checkouts` | `Idempotency-Key` header (UUID v4) and JSON body described below. | `201` with `reference`, local `status`, and server-calculated `quote`. Same-key/same-data replay returns the original result without another submission. | `400` invalid body/header or missing consent, `404` missing product, `409` stock/idempotency conflict, `422` unsupported currency. |
 | `GET /transactions/:reference` | Transaction reference plus the original `Idempotency-Key` header (UUID v4). | `200` with only `reference`, local `paymentStatus`, and `fulfillmentStatus`. This read does not call the provider or mutate state. | `400` invalid reference/header, `404` unknown reference or nonmatching key. |
 | `POST /payment/events` | Signed `transaction.updated` JSON with `environment: "test"`, ordered `signature.properties`, checksum, timestamp, and a signed transaction ID. | `200` only after authoritative server-side lookup and durable local handling, including safe duplicate/stale replay. | `400` malformed or unsupported event, `401` invalid checksum, `404` unknown local checkout, `409` binding/state conflict, `503` authoritative status unavailable. Unexpected storage failure is non-`200` for retry. |

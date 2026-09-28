@@ -1,3 +1,4 @@
+import { SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
 import { createHash, randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -144,6 +145,8 @@ function signedEvent(snapshot: VerifiedPaymentSnapshot) {
         .useValue({ getCurrent: jest.fn() })
         .overrideProvider(PaymentEventVerifier)
         .useValue(new PaymentEventVerifier(secret))
+        .overrideProvider(SandboxCardTokenization)
+        .useValue({ encryptionKey: jest.fn(), tokenize: jest.fn() })
         .compile();
       app = fixture.createNestApplication();
       await app.init();
