@@ -1,5 +1,4 @@
 import { CompactEncrypt, importSPKI } from 'jose'
-import { paymentApiBaseUrl, paymentSandboxHost } from './paymentApiBaseUrl'
 
 export interface CardDetails {
   number: string
@@ -9,7 +8,8 @@ export interface CardDetails {
   cardHolder: string
 }
 
-export type TokenizationFailure = 'configuration' | 'invalid_card' | 'unavailable' | 'invalid_response'
+export type TokenizationFailure =
+  'configuration' | 'invalid_card' | 'unavailable' | 'invalid_response'
 
 export class TokenizationError extends Error {
   readonly reason: TokenizationFailure
@@ -21,28 +21,15 @@ export class TokenizationError extends Error {
   }
 }
 
-function providerUrl(baseUrl: string, path: string, expectedHost: string, publicKey: string): string {
-  let url: URL
-  try {
-    url = new URL(baseUrl)
-  } catch {
-    throw new TokenizationError('configuration')
-  }
-  const officialSandbox = url.hostname.startsWith('sandbox.') && publicKey.startsWith('pub_test_')
-  const uatSandbox = url.hostname.startsWith('api-sandbox.') && publicKey.startsWith('pub_stagtest_')
-  if (!expectedHost || url.hostname !== expectedHost || url.port ||
-    (!officialSandbox && !uatSandbox) ||
-    url.protocol !== 'https:' || url.username || url.password ||
-    url.search || url.hash || !['', '/v1', '/v1/'].includes(url.pathname)) {
-    throw new TokenizationError('configuration')
-  }
-  return `${url.origin}/v1${path}`
-}
-
 function validCard(card: CardDetails): boolean {
-  return /^\d{13,19}$/.test(card.number) && /^\d{3,4}$/.test(card.cvc) &&
-    /^(0[1-9]|1[0-2])$/.test(card.expMonth) && /^\d{2}$/.test(card.expYear) &&
-    card.cardHolder.trim().length > 0 && card.cardHolder.length <= 120
+  return (
+    /^\d{13,19}$/.test(card.number) &&
+    /^\d{3,4}$/.test(card.cvc) &&
+    /^(0[1-9]|1[0-2])$/.test(card.expMonth) &&
+    /^\d{2}$/.test(card.expYear) &&
+    card.cardHolder.trim().length > 0 &&
+    card.cardHolder.length <= 120
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,24 +37,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function publicEncryptionKey(value: unknown): string {
-  if (!isRecord(value) || !isRecord(value.data) ||
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
     typeof value.data.publicKey !== 'string' ||
-    !/^-----BEGIN PUBLIC KEY-----[\s\S]+-----END PUBLIC KEY-----$/.test(value.data.publicKey.trim())) {
+    !/^-----BEGIN PUBLIC KEY-----[\s\S]+-----END PUBLIC KEY-----$/.test(
+      value.data.publicKey.trim(),
+    )
+  ) {
     throw new TokenizationError('invalid_response')
   }
   return value.data.publicKey
 }
 
 function cardToken(value: unknown): string {
-  if (!isRecord(value) || value.status !== 'CREATED' ||
-    !isRecord(value.data) || typeof value.data.id !== 'string' ||
-    !/^tok_[A-Za-z0-9_-]{1,252}$/.test(value.data.id)) {
+  if (
+    !isRecord(value) ||
+    value.status !== 'CREATED' ||
+    !isRecord(value.data) ||
+    typeof value.data.id !== 'string' ||
+    !/^tok_[A-Za-z0-9_-]{1,252}$/.test(value.data.id)
+  ) {
     throw new TokenizationError('invalid_response')
   }
   return value.data.id
 }
 
-async function fetchProvider(url: string, options: RequestInit, signal: AbortSignal): Promise<Response> {
+async function fetchBridge(
+  url: string,
+  options: RequestInit,
+  signal: AbortSignal,
+): Promise<Response> {
   const controller = new AbortController()
   const forwardAbort = () => controller.abort(signal.reason)
   if (signal.aborted) forwardAbort()
@@ -86,24 +86,28 @@ export async function tokenizeCard(
   card: CardDetails,
   merchantPublicKey: string,
   signal: AbortSignal,
-  baseUrl: string = paymentApiBaseUrl,
-  expectedHost: string = paymentSandboxHost,
 ): Promise<string> {
   if (!/^pub_[a-z]+_[A-Za-z0-9_-]+$/.test(merchantPublicKey))
     throw new TokenizationError('configuration')
-  const keyUrl = providerUrl(baseUrl, '/tokens/keys/tokenization', expectedHost, merchantPublicKey)
-  const tokenUrl = providerUrl(baseUrl, '/tokens/cards', expectedHost, merchantPublicKey)
   if (!validCard(card)) throw new TokenizationError('invalid_card')
 
-  const headers = { Authorization: `Bearer ${merchantPublicKey}`, Accept: 'application/json' }
   let encryptionKey: string
   try {
-    const response = await fetchProvider(keyUrl, {
-      method: 'GET', headers, cache: 'no-store',
-      credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
-    }, signal)
+    const response = await fetchBridge(
+      '/checkout/tokenization-key',
+      {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+      },
+      signal,
+    )
     if (!response.ok) throw new TokenizationError('unavailable')
-    encryptionKey = publicEncryptionKey(await response.json() as unknown)
+    encryptionKey = publicEncryptionKey({
+      data: (await response.json()) as unknown,
+    })
   } catch (error) {
     if (signal.aborted) throw error
     if (error instanceof TokenizationError) throw error
@@ -113,13 +117,17 @@ export async function tokenizeCard(
   let payload: string
   try {
     const key = await importSPKI(encryptionKey, 'RSA-OAEP-256')
-    payload = await new CompactEncrypt(new TextEncoder().encode(JSON.stringify({
-      number: card.number,
-      cvc: card.cvc,
-      exp_month: card.expMonth,
-      exp_year: card.expYear,
-      card_holder: card.cardHolder,
-    })))
+    payload = await new CompactEncrypt(
+      new TextEncoder().encode(
+        JSON.stringify({
+          number: card.number,
+          cvc: card.cvc,
+          exp_month: card.expMonth,
+          exp_year: card.expYear,
+          card_holder: card.cardHolder,
+        }),
+      ),
+    )
       .setProtectedHeader({ alg: 'RSA-OAEP-256', enc: 'A256GCM' })
       .encrypt(key)
   } catch {
@@ -128,15 +136,26 @@ export async function tokenizeCard(
   if (signal.aborted) throw signal.reason
 
   try {
-    const response = await fetchProvider(tokenUrl, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload }),
-      cache: 'no-store', credentials: 'omit', redirect: 'error',
-      referrerPolicy: 'no-referrer',
-    }, signal)
+    const response = await fetchBridge(
+      '/checkout/card-tokens',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ payload }),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+      },
+      signal,
+    )
     if (!response.ok) throw new TokenizationError('unavailable')
-    return cardToken(await response.json() as unknown)
+    const body: unknown = await response.json()
+    if (!isRecord(body)) throw new TokenizationError('invalid_response')
+    return cardToken({ status: 'CREATED', data: { id: body.token } })
   } catch (error) {
     if (signal.aborted) throw error
     if (error instanceof TokenizationError) throw error
