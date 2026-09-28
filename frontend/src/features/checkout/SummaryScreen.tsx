@@ -11,11 +11,14 @@ import './SummaryScreen.css'
 interface Props {
   prepared: TokenizedCardDelivery
   onLeave: () => void
+  onConfirm?: (quote: CheckoutQuote) => void
 }
 
-function SummaryScreen({ prepared, onLeave }: Props) {
+function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
   const dispatch = useAppDispatch()
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const confirmDialogRef = useRef<HTMLDialogElement>(null)
+  const confirmTriggerRef = useRef<HTMLButtonElement>(null)
   const { productId, quantity, product } = useAppSelector((state) => state.checkout)
   const [quote, setQuote] = useState<CheckoutQuote | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -40,6 +43,11 @@ function SummaryScreen({ prepared, onLeave }: Props) {
   function returnToProduct() {
     onLeave()
     dispatch(productReturnRequested())
+  }
+
+  function closeConfirmation() {
+    confirmDialogRef.current?.close()
+    confirmTriggerRef.current?.focus()
   }
 
   return <>
@@ -82,14 +90,28 @@ function SummaryScreen({ prepared, onLeave }: Props) {
           </dl>
         </section>
       </div>
-      <p className="summary-next" role="note">La confirmación del pago se habilitará en el siguiente hito. Este resumen no envía una transacción.</p>
+      <p className="summary-next" role="note">Comprueba el total antes de confirmar el pago.</p>
     </main>
     <footer className="checkout-footer summary-footer">
       <div className="checkout-footer__inner">
         <div className="subtotal"><span>Total estimado</span><strong>{status === 'ready' && quote ? formatMoney(quote.totalCents) : '—'}</strong></div>
-        <button type="button" className="primary-button" disabled>Confirmar y pagar</button>
+        <button ref={confirmTriggerRef} type="button" className="primary-button" disabled={!onConfirm || status !== 'ready' || !quote}
+          onClick={() => confirmDialogRef.current?.showModal()}>Confirmar y pagar</button>
       </div>
     </footer>
+    <dialog ref={confirmDialogRef} className="payment-confirmation" aria-labelledby="payment-confirm-title"
+      onClose={() => confirmTriggerRef.current?.focus()}>
+      <h2 id="payment-confirm-title">Confirma tu pago</h2>
+      <p>Se enviará una única solicitud de pago por {quote ? formatMoney(quote.totalCents) : '—'}.</p>
+      <div className="payment-confirmation__actions">
+        <button type="button" className="secondary-button" onClick={closeConfirmation}>Volver al resumen</button>
+        <button type="button" className="primary-button" onClick={() => {
+          if (status !== 'ready' || !quote) return
+          confirmDialogRef.current?.close()
+          onConfirm?.(quote)
+        }}>Enviar pago</button>
+      </div>
+    </dialog>
   </>
 }
 

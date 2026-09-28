@@ -10,7 +10,11 @@ const steps = [
   'Producto',
 ] as const
 
-function CheckoutHeader({ step, onCatalog }: { step: 1 | 2 | 3; onCatalog?: () => void }) {
+function CheckoutHeader({ step, onCatalog, catalogEnabled = true }: {
+  step: 1 | 2 | 3 | 4
+  onCatalog?: () => void
+  catalogEnabled?: boolean
+}) {
   const dispatch = useAppDispatch()
 
   return (
@@ -20,6 +24,7 @@ function CheckoutHeader({ step, onCatalog }: { step: 1 | 2 | 3; onCatalog?: () =
           type="button"
           className="brand"
           aria-label="ShopiFast: ir al catálogo"
+          disabled={!catalogEnabled}
           onClick={() => { onCatalog?.(); dispatch(catalogReturnRequested()) }}
         >
           <img
