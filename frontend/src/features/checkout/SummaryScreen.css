@@ -31,10 +31,9 @@
 .payment-confirmation__amounts > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; }
 .payment-confirmation__amounts dt { color: #526482; }
 .payment-confirmation__amounts dd { color: #0d1933; font-weight: 700; margin: 0; }
-.payment-confirmation__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
-.payment-confirmation__actions button { flex: 1 1 10rem; min-height: 3rem; min-width: 0; }
+.payment-confirmation__actions { display: grid; gap: 0.75rem; grid-auto-rows: 1fr; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.5rem; }
+.payment-confirmation__actions button { margin: 0; min-height: 3.25rem; min-width: 0; padding: 0.75rem 1rem; white-space: normal; width: 100%; }
 @media (max-width: 26rem) {
-  .payment-confirmation__actions { flex-direction: column; }
-  .payment-confirmation__actions button { flex: 0 0 auto; width: 100%; }
+  .payment-confirmation__actions { grid-template-columns: minmax(0, 1fr); }
 }
 @media (min-width: 48rem) { .summary-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-product { grid-column: 1 / -1; grid-template-columns: 5rem minmax(0, 1fr) auto; } .summary-product__price { grid-column: 3; } }

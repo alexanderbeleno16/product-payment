@@ -13,13 +13,14 @@ export class ReconcilePendingPayments {
     minAgeSeconds: number,
     leaseSeconds: number,
   ): Promise<{ checked: number; failures: number }> {
-    const claims = await this.queue.claim(
-      batchSize,
-      minAgeSeconds,
-      leaseSeconds,
-    );
+    let checked = 0;
     let failures = 0;
-    for (const claim of claims) {
+    for (let index = 0; index < batchSize; index += 1) {
+      // Lease only the payment being processed. Later lookups must not wait
+      // behind a slow provider response with their leases already ticking.
+      const [claim] = await this.queue.claim(1, minAgeSeconds, leaseSeconds);
+      if (!claim) break;
+      checked += 1;
       try {
         const result = await this.reconcile.execute(claim.reference);
         if (!result.ok) failures += 1;
@@ -33,6 +34,6 @@ export class ReconcilePendingPayments {
         await this.queue.release(claim, retrySeconds);
       }
     }
-    return { checked: claims.length, failures };
+    return { checked, failures };
   }
 }
