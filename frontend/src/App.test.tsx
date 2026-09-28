@@ -2,12 +2,18 @@ import { Provider } from 'react-redux'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import { tokenizeCard } from './api/cardTokenization'
 import { makeStore } from './app/store'
 import type { Product } from './api/checkoutApi'
 import {
   HEADPHONES_PRODUCT_ID,
   SPEAKER_PRODUCT_ID,
 } from './features/checkout/productImages'
+
+jest.mock('./api/cardTokenization', () => ({
+  TokenizationError: class extends Error { reason = 'unavailable' },
+  tokenizeCard: jest.fn(),
+}))
 
 function response(body: unknown, status = 200): Response {
   return {
@@ -78,6 +84,11 @@ function installApi(products: Product[] = [headphones, speaker]) {
         totalCents: product.priceCents * quantity + 700_000,
       })
     }
+    if (input === '/checkout/consents') return response({
+      publicKey: 'pub_test_synthetic',
+      endUserPolicy: { token: 'policy-synthetic', permalink: 'https://example.test/policy' },
+      personalDataAuthorization: { token: 'data-synthetic', permalink: 'https://example.test/data' },
+    })
     return response(null, 404)
   })
   Object.defineProperty(globalThis, 'fetch', {
@@ -88,12 +99,29 @@ function installApi(products: Product[] = [headphones, speaker]) {
   return fetchMock
 }
 
-function renderCheckout() {
-  return render(
-    <Provider store={makeStore()}>
+function renderCheckout(persist = false) {
+  const store = makeStore(persist)
+  const mounted = render(
+    <Provider store={store}>
       <App />
     </Provider>,
   )
+  return { ...mounted, store }
+}
+
+function syntheticVisa(): string {
+  const prefix = '4'.padEnd(15, '0')
+  for (let digit = 0; digit < 10; digit++) {
+    const candidate = `${prefix}${digit}`
+    let sum = 0
+    for (let index = 0; index < candidate.length; index++) {
+      let value = Number(candidate[candidate.length - 1 - index])
+      if (index % 2) value = value * 2 > 9 ? value * 2 - 9 : value * 2
+      sum += value
+    }
+    if (sum % 10 === 0) return candidate
+  }
+  throw new Error('No synthetic candidate')
 }
 
 async function openProduct(name: string) {
@@ -128,9 +156,60 @@ test('shows a server catalog and opens one authoritative product quote', async (
 
   await userEvent.setup().click(payButton)
   expect(screen.getByRole('heading', { name: 'Tarjeta y entrega' })).toHaveFocus()
-  expect(screen.getByRole('region', { name: 'Progreso de la compra' })).toBeVisible()
+  expect(screen.getByRole('dialog', { name: 'Tarjeta y entrega' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
   await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(payButton).toHaveFocus()
+})
+
+test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on refresh', async () => {
+  sessionStorage.clear()
+  const fetchMock = installApi()
+  jest.mocked(tokenizeCard).mockResolvedValue('opaque-test-token')
+  const user = userEvent.setup()
+  const { store, unmount } = renderCheckout(true)
+  await openProduct('Audífonos inalámbricos')
+  const payButton = screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' })
+  await waitFor(() => expect(payButton).toBeEnabled())
+  await user.click(payButton)
+  await screen.findByRole('link', { name: 'términos de uso' })
+  await user.type(screen.getByLabelText('Número de tarjeta'), syntheticVisa())
+  await user.type(screen.getByLabelText('Nombre en la tarjeta'), 'Persona de Prueba')
+  await user.type(screen.getByLabelText('Mes de vencimiento (MM)'), '12')
+  await user.type(screen.getByLabelText('Año de vencimiento (AA)'), '28')
+  await user.type(screen.getByLabelText('Código de seguridad (CVC)'), '123')
+  await user.type(screen.getByLabelText('Correo electrónico'), 'test@example.test')
+  await user.type(screen.getByLabelText('Nombre de quien recibe'), 'Persona de Prueba')
+  await user.type(screen.getByLabelText('Dirección de entrega'), 'Calle de Prueba 123')
+  await user.type(screen.getByLabelText('Ciudad'), 'Bogotá')
+  const [policy, data] = screen.getAllByRole('checkbox')
+  await user.click(policy)
+  await user.click(data)
+  await user.click(screen.getByRole('button', { name: 'Continuar al resumen' }))
+  expect(await screen.findByRole('heading', { name: 'Revisa tu compra' })).toHaveFocus()
+  expect(screen.queryByRole('dialog', { name: 'Tarjeta y entrega' })).not.toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('contentinfo')).toHaveTextContent('COP'))
+  expect(screen.getByRole('contentinfo')).toHaveTextContent('Total estimado')
+  expect(screen.getByText(/Visa terminada en/)).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Confirmar y pagar' })).toBeDisabled()
+  expect(jest.mocked(tokenizeCard)).toHaveBeenCalledTimes(1)
+  expect(fetchMock.mock.calls.some(([path]) => path.startsWith('/checkouts'))).toBe(false)
+  const sharedState = JSON.stringify(store.getState())
+  expect(sharedState).not.toContain('opaque-test-token')
+  expect(sharedState).not.toContain('acceptsEndUserPolicy')
+  expect(sharedState).not.toContain(syntheticVisa())
+  expect(sharedState).not.toContain('123')
+  expect(sessionStorage.getItem('shopifast-checkout-progress')).toBe(JSON.stringify({
+    version: 1, productId: HEADPHONES_PRODUCT_ID, quantity: 1,
+  }))
+  unmount()
+  const reloaded = makeStore(true)
+  render(<Provider store={reloaded}><App /></Provider>)
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(reloaded.getState().checkout.step).toBe('product')
+  expect(screen.queryByRole('dialog', { name: 'Tarjeta y entrega' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Revisa tu compra' })).not.toBeInTheDocument()
 })
 
 test('shows exactly two product accordions with description open and verified details on demand', async () => {
@@ -180,6 +259,12 @@ test('shows ten server products with optimized loading priorities and opens a ne
   expect(await screen.findByRole('heading', { name: 'Soporte plegable para teléfono gris' })).toBeVisible()
   const cards = screen.getAllByRole('article')
   expect(cards).toHaveLength(10)
+  const firstStock = cards[0].querySelector('.catalog-card__stock')
+  expect(firstStock?.children).toHaveLength(2)
+  expect(firstStock?.children[0]).toHaveTextContent('Stock:')
+  expect(firstStock?.children[1]).toHaveTextContent('2')
+  expect(within(cards[0]).getByText('2')).toHaveClass('catalog-card__stock-value')
+  expect(within(cards[2]).getByText('14')).toHaveClass('catalog-card__stock-value')
   expect(cards[0].querySelector('img')).toHaveAttribute('loading', 'eager')
   expect(cards[0].querySelector('img')).toHaveAttribute('fetchpriority', 'high')
   expect(cards[1].querySelector('img')).toHaveAttribute('loading', 'eager')
@@ -204,8 +289,9 @@ test('shows ten server products with optimized loading priorities and opens a ne
   expect(screen.getAllByRole('article')).toHaveLength(10)
 })
 
-test('sorts a copy of the catalog by descending price and restores server order', async () => {
-  installApi([headphones, speaker, ...additionalProducts])
+test('sorts a copy by both price directions and restores original server order', async () => {
+  const products = [headphones, speaker, ...additionalProducts]
+  installApi(products)
   const user = userEvent.setup()
   renderCheckout()
 
@@ -213,11 +299,12 @@ test('sorts a copy of the catalog by descending price and restores server order'
   const firstCard = () => screen.getAllByRole('article')[0]
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
 
-  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar' })
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
   await user.click(sortTrigger)
   const sortOptions = screen.getByRole('group', { name: 'Opciones de orden' })
   expect(within(sortOptions).getByRole('button', { name: 'Orden predeterminado' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(sortOptions).getByRole('button', { name: 'Precio: menor a mayor' })).toHaveAttribute('aria-pressed', 'false')
   await user.click(within(sortOptions).getByRole('button', { name: 'Precio: mayor a menor' }))
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
   expect(sortTrigger).toHaveFocus()
@@ -227,8 +314,18 @@ test('sorts a copy of the catalog by descending price and restores server order'
   expect(screen.getAllByRole('article')[9]).toHaveTextContent('Soporte plegable para teléfono gris')
 
   await user.click(sortTrigger)
+  const ascending = within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: menor a mayor' })
+  expect(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: mayor a menor' })).toHaveAttribute('aria-pressed', 'true')
+  await user.click(ascending)
+  expect(sortTrigger).toHaveAccessibleDescription('Precio: menor a mayor')
+  expect(sortTrigger).toHaveFocus()
+  expect(firstCard()).toHaveTextContent('Soporte plegable para teléfono gris')
+  expect(screen.getAllByRole('article')[9]).toHaveTextContent('Teclado mecánico compacto gris oscuro')
+  await user.click(sortTrigger)
+  expect(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Precio: menor a mayor' })).toHaveAttribute('aria-pressed', 'true')
   await user.click(within(screen.getByRole('group', { name: 'Opciones de orden' })).getByRole('button', { name: 'Orden predeterminado' }))
   expect(firstCard()).toHaveTextContent('Audífonos inalámbricos')
+  expect(products[0]).toBe(headphones)
 })
 
 test('closes the sort choices on Escape or outside click without losing keyboard focus', async () => {
@@ -237,7 +334,7 @@ test('closes the sort choices on Escape or outside click without losing keyboard
   renderCheckout()
   await screen.findByRole('heading', { name: 'Explora nuestros productos' })
 
-  const sortTrigger = screen.getByRole('button', { name: 'Ordenar productos' })
+  const sortTrigger = screen.getByRole('button', { name: 'Ordenar' })
   sortTrigger.focus()
   await user.keyboard('{Enter}')
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'true')
@@ -257,6 +354,8 @@ test('closes the sort choices on Escape or outside click without losing keyboard
   await user.tab()
   expect(screen.getByRole('button', { name: 'Precio: mayor a menor' })).toHaveFocus()
   await user.tab()
+  expect(screen.getByRole('button', { name: 'Precio: menor a mayor' })).toHaveFocus()
+  await user.tab()
   expect(sortTrigger).toHaveAttribute('aria-expanded', 'false')
 })
 
@@ -269,7 +368,7 @@ test('opens a product with the full-card native button using the keyboard', asyn
   await user.tab()
   expect(screen.getByRole('button', { name: 'ShopiFast: ir al catálogo' })).toHaveFocus()
   await user.tab()
-  expect(screen.getByRole('button', { name: 'Ordenar productos' })).toHaveFocus()
+  expect(screen.getByRole('button', { name: 'Ordenar' })).toHaveFocus()
   await user.tab()
   const firstCard = screen.getAllByRole('article')[0]
   expect(within(firstCard).getByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).toHaveFocus()
@@ -368,12 +467,16 @@ test('keeps loaded cards visible during refresh and after a refresh error', asyn
       : originalFetch(input),
   )
   await user.click(screen.getByRole('button', { name: 'Volver a intentar' }))
-  expect(await screen.findByText('1 unidad disponible')).toBeVisible()
+  await waitFor(() => expect(within(screen.getAllByRole('article')[0]).getByText('1')).toBeVisible())
 })
 
 test('does not quote or enable checkout for a sold-out product', async () => {
   const fetchMock = installApi([{ ...headphones, stock: 0 }])
   renderCheckout()
+  const catalogCard = (await screen.findByRole('button', { name: 'Ver producto: Audífonos inalámbricos' })).closest('article')
+  expect(catalogCard).not.toBeNull()
+  expect(within(catalogCard!).getByText('Stock:')).toBeVisible()
+  expect(within(catalogCard!).getByText('0 · Agotado')).toHaveClass('catalog-card__stock-value--empty')
   await openProduct('Audífonos inalámbricos')
   expect(screen.getByText('Agotado')).toBeVisible()
   expect(screen.getByText('Producto agotado. No puedes continuar con la compra.')).toBeVisible()

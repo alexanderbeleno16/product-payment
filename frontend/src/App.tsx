@@ -1,43 +1,26 @@
-import { useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useAppDispatch, useAppSelector } from './app/hooks'
-import CheckoutHeader from './components/CheckoutHeader'
 import CatalogScreen from './features/checkout/CatalogScreen'
 import ProductScreen from './features/checkout/ProductScreen'
-import { productReturnRequested } from './features/checkout/checkoutSlice'
+import CardDeliveryDialog from './features/checkout/CardDeliveryDialog'
+import SummaryScreen from './features/checkout/SummaryScreen'
+import type { TokenizedCardDelivery } from './features/checkout/cardForm'
+import { summaryEntered } from './features/checkout/checkoutSlice'
 import './App.css'
 
-function CardPlaceholder() {
+export default function App() {
   const dispatch = useAppDispatch()
-  const titleRef = useRef<HTMLHeadingElement>(null)
-
-  useEffect(() => {
-    titleRef.current?.focus()
-  }, [])
-
+  const step = useAppSelector((state) => state.checkout.step)
+  const [prepared, setPrepared] = useState<TokenizedCardDelivery | null>(null)
+  if (step === 'summary' && prepared) return <SummaryScreen prepared={prepared} onLeave={() => setPrepared(null)} />
+  if (step === 'catalog') return <CatalogScreen />
   return (
     <>
-      <CheckoutHeader step={2} />
-      <main className="checkout-main">
-        <div className="state-panel">
-          <h1 ref={titleRef} tabIndex={-1}>
-            Tarjeta y entrega
-          </h1>
-          <p>El ingreso de tarjeta y los datos de entrega aún no están disponibles.</p>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => dispatch(productReturnRequested())}
-          >
-            Volver al producto
-          </button>
-        </div>
-      </main>
+      <ProductScreen />
+      {step === 'card' && <CardDeliveryDialog onPrepared={(handoff) => {
+        setPrepared(handoff)
+        dispatch(summaryEntered())
+      }} />}
     </>
   )
-}
-
-export default function App() {
-  const step = useAppSelector((state) => state.checkout.step)
-  if (step === 'catalog') return <CatalogScreen />
-  return step === 'product' ? <ProductScreen /> : <CardPlaceholder />
 }

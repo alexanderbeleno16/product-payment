@@ -1,6 +1,6 @@
 # Product Payment
 
-This repository contains a React/Vite SPA and a NestJS backend. The SPA currently offers a ten-product demo catalog, breadcrumb navigation, one selected product at a time, quantity and server-priced quote, and a two-view image gallery with a full-screen lightbox. Card/delivery entry, payment tokenization, summary, final status, and return to refreshed stock remain frontend work. The backend implements product listing and by-ID reads, idempotent PENDING checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local payment/fulfillment status reads, and an operator-only known-ID reconciliation command. See the [frontend setup](frontend/README.md), [backend setup and API contract](backend/README.md), and [Postman collection](docs/product-payment.postman_collection.json). The collection is a repository artifact, not a hosted API URL; its checkout request requires locally supplied transient tokens and must never be exported with credentials. Backend paths have fake tests and conditional PostgreSQL tests; live final approval, a deployed callback, the complete browser checkout, and AWS deployment remain unverified or unimplemented. The diagrams show the intended full solution; annotations below distinguish implemented behavior from proposed UI and deployment.
+This repository contains a React/Vite SPA and a NestJS backend. The SPA currently offers a ten-product demo catalog, one selected product at a time, a server-priced quote, a two-view gallery, an accessible card/delivery modal with separate current consents and browser-side encrypted tokenization, and a non-paying summary that refreshes the server quote. Payment submission, final status, and return to refreshed stock remain frontend work. The backend implements product reads, idempotent PENDING checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local status reads, and operator-only known-ID reconciliation. See the [frontend setup](frontend/README.md), [backend setup and API contract](backend/README.md), and [Postman collection](docs/product-payment.postman_collection.json). The collection is a repository artifact, not a hosted API URL; its checkout request requires locally supplied transient tokens and must never be exported with credentials. Backend paths have fake tests and conditional PostgreSQL tests; live browser tokenization, terminal approval, a deployed callback, the complete browser checkout, and AWS deployment remain unverified or unimplemented. The diagrams show the intended full solution; annotations below distinguish implemented behavior from proposed UI and deployment.
 
 ## 1. Application architecture (proposed)
 
@@ -31,7 +31,7 @@ flowchart LR
     PaymentAdapter -. implements .-> PaymentPort
 ```
 
-PostgreSQL and TypeORM implement product reads, PENDING checkout persistence, and atomic confirmed-payment/fulfillment effects. The application core owns checkout, payment-submission, status-reading, and finalization contracts and pure policy for authoritative fact binding, monotonic transitions, and fulfillment decisions. The TypeORM adapter executes the row lock and atomic writes; Nest HTTP and outbound adapters are composed at the edge. Signed-event ingress and an explicit operator reconciliation path are implemented; the browser journey is not. Implemented routes and limitations are documented in the [backend README](backend/README.md). The core must not import NestJS, TypeORM, or payment-provider types.
+PostgreSQL and TypeORM implement product reads, PENDING checkout persistence, and atomic confirmed-payment/fulfillment effects. The application core owns checkout, payment-submission, status-reading, and finalization contracts and pure policy for authoritative fact binding, monotonic transitions, and fulfillment decisions. The TypeORM adapter executes the row lock and atomic writes; Nest HTTP and outbound adapters are composed at the edge. Signed-event ingress and an explicit operator reconciliation path are implemented; the browser journey currently stops at a non-paying summary. Implemented routes and limitations are documented in the [backend README](backend/README.md). The core must not import NestJS, TypeORM, or payment-provider types.
 
 ## 2. Buyer journey (proposed)
 
@@ -51,11 +51,11 @@ flowchart LR
     Updated -->|New payment attempt| Details
 ```
 
-After a refresh, only non-sensitive checkout progress may be restored. Card details must be entered again. A pending or unknown outcome must not be presented as a rejection or a successful delivery.
+After a refresh, only the selected product ID and quantity are restored from a validated `sessionStorage` allowlist; product and quote are re-fetched. Card details, consents, and token must be entered again. A pending or unknown outcome must not be presented as a rejection or a successful delivery.
 
 ## 3. Payment and fulfillment sequence (proposed)
 
-The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The frontend catalog and product selection are implemented; the card-to-status browser journey, deployed callback, and live final approval remain pending. Bounded browser polling, when implemented, will read **our local API state** only. Initial payment submission currently accepts only a matching `201`/`PENDING`; a terminal initiation response is not interpreted as confirmed success.
+The provider's verified outcome—not the browser or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The frontend catalog, product selection, card/consent modal, tokenization boundary, and non-paying summary are implemented; browser payment submission/status, deployed callback, and live final approval remain pending. Bounded browser polling, when implemented, will read **our local API state** only. Initial payment submission currently accepts only a matching `201`/`PENDING`; a terminal initiation response is not interpreted as confirmed success.
 
 ```mermaid
 sequenceDiagram
@@ -80,9 +80,24 @@ sequenceDiagram
     SPA->>API: GET /checkout/quote
     API-->>SPA: Server-priced quote
     Buyer->>SPA: Enter delivery and card details
-    SPA->>SPA: Validate card format and delivery fields
-    SPA->>Provider: Tokenize card in browser
-    Provider-->>SPA: Payment token
+    SPA->>API: GET /checkout/consents
+    API-->>SPA: Current policy links, consent tokens, public key
+    Buyer->>SPA: Explicitly accept both current consent documents
+    SPA->>SPA: Validate card, delivery, and both consents
+    SPA->>API: GET /checkout/tokenization-key
+    API->>Provider: Fetch public encryption key
+    Provider-->>API: Public encryption key
+    API-->>SPA: Public encryption key only
+    SPA->>SPA: Encrypt card details as compact JWE
+    SPA->>API: POST /checkout/card-tokens with compact JWE only
+    API->>Provider: Relay compact JWE for tokenization
+    Provider-->>API: Opaque card token
+    API-->>SPA: Opaque card token only
+    SPA->>API: GET /checkout/quote before summary
+    API-->>SPA: Refreshed server-priced quote
+    SPA-->>Buyer: Show non-paying summary and disabled payment action
+    Note over Buyer,SPA: Current frontend stops here. Payment submission is planned.
+    Buyer->>SPA: Explicitly confirm and pay
     SPA->>API: Submit checkout with token, delivery, and idempotency key
     API->>DB: Look up key and compare canonical checkout fingerprint
     alt Same key and same checkout already exist
@@ -146,7 +161,7 @@ The brief groups stock and delivery updates under both completed and failed outc
 
 The implemented HTTP surface includes read-only `GET /products` (an array with current stock) and `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `POST /checkouts`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. The status lookup requires the original idempotency key and returns only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. The [Postman collection](docs/product-payment.postman_collection.json) contains the six buyer-facing requests; the signed event is provider-to-server and deliberately not represented as a manually runnable request. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs. Neither URL is public.
 
-Local Jest evidence on 2026-09-27: `cd frontend && npm run test:coverage` passed 38 tests with 92.87% statements, 86.44% branches, 96.34% functions, and 94.35% lines. With `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 125 tests and measured 90.56% statements, 85.13% branches, 86.82% functions, and 91.27% lines. The PostgreSQL-backed E2E command passed 28 tests. These measurements cover the current partial browser flow and backend; they do not establish live terminal-provider behavior or a deployed callback. Without a configured test database, the PostgreSQL test suites are skipped and backend coverage is lower.
+Local Jest evidence on 2026-09-27: `cd frontend && npm run test:coverage` passed 70 tests with 93.00% statements, 88.52% branches, 95.62% functions, and 95.17% lines. With `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 125 tests and measured 90.56% statements, 85.13% branches, 86.82% functions, and 91.27% lines. The PostgreSQL-backed E2E command passed 28 tests. These measurements cover the current partial browser flow and backend; they do not establish live terminal-provider behavior or a deployed callback. Without a configured test database, the PostgreSQL test suites are skipped and backend coverage is lower.
 
 Backend tests cover duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local rollback on delivery insertion failure. Unit tests cover use-case policy; PostgreSQL integration tests prove atomicity and uniqueness. Live terminal-provider behavior and deployed callback remain unverified. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
 
@@ -239,13 +254,14 @@ flowchart LR
     CloudFront -->|Private origin access| S3
     Browser -->|Call API over HTTPS| ALB
     ALB -->|HTTP to task| ECS
-    Browser -->|Tokenize card over HTTPS| Provider
+    Browser -->|Encrypted JWE to same-origin path| CloudFront
+    CloudFront -->|Uncached tokenization routes| ALB
     Provider -->|Signed payment event over HTTPS| ALB
     ECS -->|Restricted PostgreSQL 5432| RDS
     ECS -->|Payment and explicit reconciliation over HTTPS| Provider
 ```
 
-CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would create an internet-facing ALB and a Fargate task in the default VPC's public subnets. Public HTTPS terminates at the ALB; its target connection to the NestJS task uses HTTP by default. Restrict task ingress to the ALB and keep RDS non-public, in the same VPC, with PostgreSQL port 5432 open only from the task's security group. The task needs outbound HTTPS access to the payment provider; the public event endpoint must verify its signature and transaction identity before any state change. This public-subnet proposal avoids a NAT gateway; moving the task to private subnets would require revisiting both public ingress and internet egress. Because the SPA and API use separate HTTPS origins, their eventual CSP and CORS settings must be verified together; the SPA's CSP must also allow card tokenization with the provider. No raw card data should pass through the API.
+CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would create an internet-facing ALB and a Fargate task in the default VPC's public subnets. Public HTTPS terminates at the ALB; its target connection to the NestJS task uses HTTP by default. Restrict task ingress to the ALB and keep RDS non-public, in the same VPC, with PostgreSQL port 5432 open only from the task's security group. The task needs outbound HTTPS access to the payment provider; the public event endpoint must verify its signature and transaction identity before any state change. This public-subnet proposal avoids a NAT gateway; moving the task to private subnets would require revisiting both public ingress and internet egress. CloudFront must route `/checkout/*` to the API as a same-origin HTTPS behavior, forward GET/POST and required headers, and disable caching for public-key and tokenization responses. Other API paths may remain on a separate HTTPS origin with deliberate CORS/CSP. The browser encrypts the card before sending a compact JWE through the API; raw card fields must not pass through it. A local per-process guard now bounds both public tokenization routes, but AWS still requires edge/distributed per-client limits, trusted proxy/IP policy, and abuse monitoring before public exposure; ALB peer addresses are not buyer identities.
 
 Before deployment, configure an SPA route fallback to `index.html` for browser refreshes, supply database and provider credentials through a secret mechanism rather than the image or frontend build, and verify the actual TLS, headers, and security-group rules. These operational details are intentionally not extra boxes in the runtime diagram.
 

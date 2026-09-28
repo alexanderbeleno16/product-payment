@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  Logger,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import type {
   CheckoutTransaction,
 } from '../../../application/checkout';
 import type { ConsentTermsReader } from '../../../application/consent-terms.port';
+import { ConsentTermsUnavailable } from '../../../application/consent-terms.port';
 import { GetTransactionStatus } from '../../../application/get-transaction-status';
 import { InitiatePayment } from '../../../application/initiate-payment';
 import { QuoteCheckout } from '../../../application/quote-checkout';
@@ -135,8 +137,9 @@ describe('CheckoutController HTTP mapping', () => {
 
   it('does not expose provider failure details when consent retrieval fails', async () => {
     const { controller, consentTerms } = controllerWithFakes();
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     consentTerms.getCurrent.mockRejectedValue(
-      new Error('sensitive upstream response'),
+      new ConsentTermsUnavailable('auth'),
     );
 
     await expect(controller.consents()).rejects.toThrow(
@@ -144,6 +147,12 @@ describe('CheckoutController HTTP mapping', () => {
         'Consent terms are temporarily unavailable',
       ),
     );
+    expect(warning).toHaveBeenCalledWith('Consent terms unavailable: auth');
+    consentTerms.getCurrent.mockRejectedValueOnce(new Error('sensitive upstream response'));
+    await expect(controller.consents()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(warning).toHaveBeenLastCalledWith('Consent terms unavailable: unexpected');
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('sensitive');
+    warning.mockRestore();
   });
 
   it('passes only checkout intent and transient credentials to the use case and redacts the response', async () => {

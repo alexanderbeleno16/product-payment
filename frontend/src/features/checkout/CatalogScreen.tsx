@@ -12,16 +12,18 @@ function CatalogScreen() {
   )
   const titleRef = useRef<HTMLHeadingElement>(null)
   const returningFromProduct = useRef(catalog.length > 0)
-  const [sortOrder, setSortOrder] = useState<'default' | 'price-desc'>('default')
+  const [sortOrder, setSortOrder] = useState<'default' | 'price-desc' | 'price-asc'>('default')
   const [sortOpen, setSortOpen] = useState(false)
   const sortControlRef = useRef<HTMLDivElement>(null)
   const sortTriggerRef = useRef<HTMLButtonElement>(null)
   const sortLabelId = useId()
   const sortValueId = useId()
   const sortOptionsId = useId()
-  const visibleProducts = sortOrder === 'price-desc'
-    ? [...catalog].sort((first, second) => second.priceCents - first.priceCents)
-    : catalog
+  const visibleProducts = sortOrder === 'default'
+    ? catalog
+    : [...catalog].sort((first, second) => sortOrder === 'price-desc'
+      ? second.priceCents - first.priceCents
+      : first.priceCents - second.priceCents)
 
   useEffect(() => {
     if (returningFromProduct.current) titleRef.current?.focus()
@@ -53,7 +55,7 @@ function CatalogScreen() {
     }
   }, [sortOpen])
 
-  function chooseSort(order: 'default' | 'price-desc') {
+  function chooseSort(order: 'default' | 'price-desc' | 'price-asc') {
     setSortOrder(order)
     setSortOpen(false)
     sortTriggerRef.current?.focus()
@@ -108,7 +110,7 @@ function CatalogScreen() {
         {catalog.length > 0 && (
           <>
             <div className="catalog-sort">
-              <span id={sortLabelId} className="catalog-sort__label">Ordenar productos</span>
+              <span id={sortLabelId} className="catalog-sort__label">Ordenar</span>
               <div
                 className="catalog-sort__control"
                 ref={sortControlRef}
@@ -126,7 +128,8 @@ function CatalogScreen() {
                   aria-controls={sortOptionsId}
                   onClick={() => setSortOpen((open) => !open)}
                 >
-                  <span id={sortValueId}>{sortOrder === 'default' ? 'Orden predeterminado' : 'Precio: mayor a menor'}</span>
+                  <span id={sortValueId}>{sortOrder === 'default' ? 'Orden predeterminado'
+                    : sortOrder === 'price-desc' ? 'Precio: mayor a menor' : 'Precio: menor a mayor'}</span>
                   <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
                     <path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -140,6 +143,10 @@ function CatalogScreen() {
                     <button type="button" aria-pressed={sortOrder === 'price-desc'} onClick={() => chooseSort('price-desc')}>
                       <span>Precio: mayor a menor</span>
                       {sortOrder === 'price-desc' && <span aria-hidden="true">✓</span>}
+                    </button>
+                    <button type="button" aria-pressed={sortOrder === 'price-asc'} onClick={() => chooseSort('price-asc')}>
+                      <span>Precio: menor a mayor</span>
+                      {sortOrder === 'price-asc' && <span aria-hidden="true">✓</span>}
                     </button>
                   </div>
                 )}
@@ -169,11 +176,14 @@ function CatalogScreen() {
                       <h2>{product.name}</h2>
                       <p>{product.description}</p>
                       <strong>{formatMoney(product.priceCents)}</strong>
-                      <span className="catalog-card__stock">
-                        {product.stock === 0
-                          ? 'Agotado'
-                          : `${product.stock} ${product.stock === 1 ? 'unidad disponible' : 'unidades disponibles'}`}
-                      </span>
+                      <div className="catalog-card__stock">
+                        <span>Stock:</span>
+                        <span className={product.stock === 0
+                          ? 'catalog-card__stock-value catalog-card__stock-value--empty'
+                          : 'catalog-card__stock-value'}>
+                          {product.stock === 0 ? '0 · Agotado' : product.stock}
+                        </span>
+                      </div>
                     </div>
                     <button
                       type="button"
