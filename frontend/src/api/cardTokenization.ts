@@ -67,17 +67,31 @@ async function fetchBridge(
   url: string,
   options: RequestInit,
   signal: AbortSignal,
-): Promise<Response> {
+): Promise<unknown> {
   const controller = new AbortController()
   const forwardAbort = () => controller.abort(signal.reason)
   if (signal.aborted) forwardAbort()
   else signal.addEventListener('abort', forwardAbort, { once: true })
   const timeout = setTimeout(() => controller.abort(), 15_000)
+  let rejectOnAbort: () => void = () => undefined
+  const aborted = new Promise<never>((_, reject) => {
+    rejectOnAbort = () => reject(controller.signal.reason)
+  })
+  controller.signal.addEventListener('abort', rejectOnAbort, { once: true })
   try {
-    return await fetch(url, { ...options, signal: controller.signal })
+    if (controller.signal.aborted) throw controller.signal.reason
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...options, signal: controller.signal })
+        if (!response.ok) throw new TokenizationError('unavailable')
+        return (await response.json()) as unknown
+      })(),
+      aborted,
+    ])
   } finally {
     clearTimeout(timeout)
     signal.removeEventListener('abort', forwardAbort)
+    controller.signal.removeEventListener('abort', rejectOnAbort)
   }
 }
 
@@ -93,7 +107,7 @@ export async function tokenizeCard(
 
   let encryptionKey: string
   try {
-    const response = await fetchBridge(
+    const body = await fetchBridge(
       '/checkout/tokenization-key',
       {
         method: 'GET',
@@ -104,9 +118,8 @@ export async function tokenizeCard(
       },
       signal,
     )
-    if (!response.ok) throw new TokenizationError('unavailable')
     encryptionKey = publicEncryptionKey({
-      data: (await response.json()) as unknown,
+      data: body,
     })
   } catch (error) {
     if (signal.aborted) throw error
@@ -136,7 +149,7 @@ export async function tokenizeCard(
   if (signal.aborted) throw signal.reason
 
   try {
-    const response = await fetchBridge(
+    const body = await fetchBridge(
       '/checkout/card-tokens',
       {
         method: 'POST',
@@ -152,8 +165,6 @@ export async function tokenizeCard(
       },
       signal,
     )
-    if (!response.ok) throw new TokenizationError('unavailable')
-    const body: unknown = await response.json()
     if (!isRecord(body)) throw new TokenizationError('invalid_response')
     return cardToken({ status: 'CREATED', data: { id: body.token } })
   } catch (error) {

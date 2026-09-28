@@ -18,6 +18,19 @@ const response = (body: unknown, status = 200) =>
     status,
     json: async () => body,
   }) as Response
+const stalledBodyResponse = () => {
+  let markBodyStarted: () => void = () => undefined
+  const bodyStarted = new Promise<void>((resolve) => {
+    markBodyStarted = resolve
+  })
+  const stalled = Object.assign(response({}), {
+    json: () => {
+      markBodyStarted()
+      return new Promise<never>(() => undefined)
+    },
+  })
+  return { bodyStarted, stalled }
+}
 beforeEach(() => {
   Object.defineProperty(globalThis, 'TextEncoder', {
     configurable: true,
@@ -127,3 +140,54 @@ test('maps bridge failure safely and does not post after abort', async () => {
   await expect(tokenizeCard(card, key, controller.signal)).rejects.toBeDefined()
   expect(fetchMock).toHaveBeenCalledTimes(2)
 })
+
+test.each(['key', 'token'] as const)(
+  'times out while the %s response body is stalled after headers',
+  async (stage) => {
+    jest.useFakeTimers()
+    try {
+      const fetchMock = jest.mocked(fetch)
+      const { bodyStarted, stalled } = stalledBodyResponse()
+      if (stage === 'token') {
+        fetchMock.mockResolvedValueOnce(response({ publicKey: pem }))
+      }
+      fetchMock.mockResolvedValueOnce(stalled)
+
+      const request = tokenizeCard(card, key, new AbortController().signal)
+      await bodyStarted
+      jest.advanceTimersByTime(15_000)
+
+      await expect(request).rejects.toEqual(
+        new TokenizationError('unavailable'),
+      )
+      expect(fetchMock).toHaveBeenCalledTimes(stage === 'key' ? 1 : 2)
+      const requestSignal = fetchMock.mock.calls.at(-1)?.[1]?.signal
+      expect(requestSignal?.aborted).toBe(true)
+    } finally {
+      jest.useRealTimers()
+    }
+  },
+)
+
+test.each(['key', 'token'] as const)(
+  'honors caller cancellation while the %s response body is stalled',
+  async (stage) => {
+    const fetchMock = jest.mocked(fetch)
+    const { bodyStarted, stalled } = stalledBodyResponse()
+    if (stage === 'token') {
+      fetchMock.mockResolvedValueOnce(response({ publicKey: pem }))
+    }
+    fetchMock.mockResolvedValueOnce(stalled)
+
+    const controller = new AbortController()
+    const request = tokenizeCard(card, key, controller.signal)
+    await bodyStarted
+    const reason = new Error('cancelled')
+    controller.abort(reason)
+
+    await expect(request).rejects.toBe(reason)
+    expect(fetchMock).toHaveBeenCalledTimes(stage === 'key' ? 1 : 2)
+    const requestSignal = fetchMock.mock.calls.at(-1)?.[1]?.signal
+    expect(requestSignal?.aborted).toBe(true)
+  },
+)
