@@ -6,7 +6,11 @@ export interface CardTokenizationConfig {
 }
 
 export class CardTokenizationUnavailable extends Error {
-  constructor() {
+  constructor(
+    readonly stage: 'payload' | 'key' | 'token' = 'token',
+    readonly reason: 'invalid_payload' | 'upstream_validation' | 'upstream_status' | 'transport' | 'invalid_response' = 'transport',
+    readonly upstreamStatus?: number,
+  ) {
     super('Card tokenization unavailable');
   }
 }
@@ -63,14 +67,15 @@ export class SandboxCardTokenization {
   }
 
   async encryptionKey(): Promise<string> {
-    const value = await this.request(this.keyUrl, { method: 'GET' }, 200);
+    const value = await this.request(this.keyUrl, { method: 'GET' }, 200, 'key');
     if (
       !record(value) ||
       !record(value.data) ||
       typeof value.data.publicKey !== 'string'
     )
-      throw new CardTokenizationUnavailable();
-    return canonicalPublicKey(value.data.publicKey);
+      throw new CardTokenizationUnavailable('key', 'invalid_response');
+    try { return canonicalPublicKey(value.data.publicKey); }
+    catch { throw new CardTokenizationUnavailable('key', 'invalid_response'); }
   }
 
   async tokenize(payload: string): Promise<string> {
@@ -81,7 +86,7 @@ export class SandboxCardTokenization {
       parts.length !== 5 ||
       parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))
     )
-      throw new CardTokenizationUnavailable();
+      throw new CardTokenizationUnavailable('payload', 'invalid_payload');
     try {
       const header: unknown = JSON.parse(
         Buffer.from(parts[0], 'base64url').toString('utf8'),
@@ -94,7 +99,7 @@ export class SandboxCardTokenization {
       )
         throw new Error('Invalid JWE header');
     } catch {
-      throw new CardTokenizationUnavailable();
+      throw new CardTokenizationUnavailable('payload', 'invalid_payload');
     }
     const value = await this.request(
       this.tokenUrl,
@@ -104,6 +109,7 @@ export class SandboxCardTokenization {
         body: JSON.stringify({ payload }),
       },
       201,
+      'token',
     );
     if (
       !record(value) ||
@@ -112,7 +118,7 @@ export class SandboxCardTokenization {
       typeof value.data.id !== 'string' ||
       !/^tok_[A-Za-z0-9_-]{1,252}$/.test(value.data.id)
     )
-      throw new CardTokenizationUnavailable();
+      throw new CardTokenizationUnavailable('token', 'invalid_response');
     return value.data.id;
   }
 
@@ -120,6 +126,7 @@ export class SandboxCardTokenization {
     url: string,
     init: RequestInit,
     expectedStatus: number,
+    stage: 'key' | 'token',
   ): Promise<unknown> {
     try {
       const headers = new Headers(init.headers);
@@ -131,11 +138,19 @@ export class SandboxCardTokenization {
         signal: AbortSignal.timeout(this.timeoutMs),
         redirect: 'error',
       });
-      if (response.status !== expectedStatus)
-        throw new CardTokenizationUnavailable();
-      return (await response.json()) as unknown;
-    } catch {
-      throw new CardTokenizationUnavailable();
+      if (response.status !== expectedStatus) {
+        const reason = stage === 'token' && response.status === 422
+          ? 'upstream_validation' : 'upstream_status';
+        throw new CardTokenizationUnavailable(stage, reason, response.status);
+      }
+      try {
+        return (await response.json()) as unknown;
+      } catch {
+        throw new CardTokenizationUnavailable(stage, 'invalid_response');
+      }
+    } catch (error) {
+      if (error instanceof CardTokenizationUnavailable) throw error;
+      throw new CardTokenizationUnavailable(stage, 'transport');
     }
   }
 }

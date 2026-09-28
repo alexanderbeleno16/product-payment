@@ -1,5 +1,5 @@
 import {
-  clearPaymentRecovery, hasPaymentRecoveryRecord, markPaymentSubmissionRejected,
+  clearPaymentRecovery, clearPaymentRecoveryFor, hasPaymentRecoveryRecord, markPaymentSubmissionRejected,
   readPaymentRecovery, writePaymentRecovery,
 } from './paymentRecovery'
 import { HEADPHONES_PRODUCT_ID } from '../features/checkout/productImages'
@@ -48,6 +48,14 @@ test('marks only the same durable identity as definitively rejected', () => {
   expect(sessionStorage.getItem(storageKey)).toBe(JSON.stringify({
     version: 2, ...recovery, submissionRejected: true,
   }))
+})
+
+test('clears only the matching key and verifies removal', () => {
+  expect(writePaymentRecovery(recovery)).toBe(true)
+  expect(clearPaymentRecoveryFor('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe(false)
+  expect(readPaymentRecovery()).toEqual(recovery)
+  expect(clearPaymentRecoveryFor(key)).toBe(true)
+  expect(readPaymentRecovery()).toBeNull()
 })
 
 test('unreadable records remain detectable and cannot be silently replaced', () => {

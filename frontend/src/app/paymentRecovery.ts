@@ -87,3 +87,14 @@ export function clearPaymentRecovery(): void {
     // Browser storage can be unavailable; no sensitive data is retained here.
   }
 }
+
+/** Release only the confirmed absent attempt; a failed removal must not enable another POST. */
+export function clearPaymentRecoveryFor(idempotencyKey: string): boolean {
+  if (readPaymentRecovery()?.idempotencyKey !== idempotencyKey) return false
+  try {
+    sessionStorage.removeItem(STORAGE_KEY)
+    return sessionStorage.getItem(STORAGE_KEY) === null
+  } catch {
+    return false
+  }
+}

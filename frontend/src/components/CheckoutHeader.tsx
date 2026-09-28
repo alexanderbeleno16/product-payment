@@ -41,23 +41,6 @@ function CheckoutHeader({ step, onCatalog, catalogEnabled = true }: {
           </span>
         )}
       </div>
-      {step > 1 && (
-        <section aria-label="Progreso de la compra" className="checkout-progress">
-          <ol>
-            {steps.map((label, index) => (
-              <li
-                key={`${label}-${index}`}
-                aria-current={index + 1 === step ? 'step' : undefined}
-              >
-                <span className="checkout-progress__dot" aria-hidden="true" />
-                <span>
-                  {index + 1}. {label}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
     </header>
   )
 }
