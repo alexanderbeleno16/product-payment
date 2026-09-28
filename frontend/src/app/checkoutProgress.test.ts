@@ -50,6 +50,19 @@ test('restores the card stage without any card data', () => {
   expect(makeStore(true).getState().checkout.step).toBe('card')
 })
 
+test('restores a summary marker without persisting payment credentials', () => {
+  const store = makeStore()
+  store.dispatch(progressRestored({ productId: HEADPHONES_PRODUCT_ID, quantity: 2, step: 'summary' }))
+  writeCheckoutProgress(store.getState())
+  const saved = sessionStorage.getItem('shopifast-checkout-progress')!
+  expect(saved).toBe(JSON.stringify({ version: 2, productId: HEADPHONES_PRODUCT_ID, quantity: 2, step: 'summary' }))
+  expect(saved).not.toMatch(/cardToken|cardHolder|consentToken|cvc|expMonth/)
+  const restored = makeStore(true).getState().checkout
+  expect(restored.step).toBe('summary')
+  expect(restored.product).toBeNull()
+  expect(restored.quote).toBeNull()
+})
+
 test('clears saved contact when returning to catalog', () => {
   const store = makeStore()
   store.dispatch(progressRestored({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, step: 'card' }))

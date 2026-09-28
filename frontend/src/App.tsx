@@ -18,12 +18,21 @@ export default function App() {
   const quoteReady = useAppSelector((state) => state.checkout.quoteStatus === 'ready')
   const paymentPhase = useAppSelector((state) => state.payment.phase)
   const [prepared, setPrepared] = useState<TokenizedCardDelivery | null>(null)
+  const [retokenizing, setRetokenizing] = useState(false)
   if (paymentPhase !== 'idle') return <PaymentStatusScreen />
-  if (step === 'summary' && prepared) return <SummaryScreen prepared={prepared} onLeave={() => setPrepared(null)}
+  if (step === 'summary') return <>
+    <SummaryScreen prepared={prepared} onLeave={() => { setPrepared(null); setRetokenizing(false) }}
+      onRetokenize={() => setRetokenizing(true)}
     onConfirm={(quote: CheckoutQuote) => {
+      if (!prepared) return
       void submitPayment(prepared, quote, dispatch, store.getState)
       setPrepared(null)
     }} />
+    {retokenizing && <CardDeliveryDialog onClose={() => setRetokenizing(false)} onPrepared={(handoff) => {
+      setPrepared(handoff)
+      setRetokenizing(false)
+    }} />}
+  </>
   if (step === 'catalog') return <CatalogScreen />
   return (
     <>
