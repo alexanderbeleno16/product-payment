@@ -1,0 +1,41 @@
+.card-dialog { background:#f5f7fc; border:0; border-radius:1.4rem; box-shadow:0 1.5rem 5rem #06153866; color:#151827; max-height:min(92dvh,60rem); max-width:min(48rem,calc(100vw - 1.25rem)); overflow-x:hidden; padding:1rem; width:100%; }
+.card-dialog::backdrop { background:#071635b8; }
+.card-dialog__header { align-items:flex-start; display:flex; gap:1rem; justify-content:space-between; margin-bottom:1rem; }
+.card-dialog__header h2 { font-size:clamp(1.35rem,4vw,1.8rem); line-height:1.2; margin:0; }
+.card-dialog__header .eyebrow { margin:0 0 .3rem; }
+.card-dialog__close { align-items:center; background:#fff; border:1px solid #cbd6ea; border-radius:50%; color:#1748c7; cursor:pointer; display:flex; flex:0 0 2.75rem; font-size:1.6rem; height:2.75rem; justify-content:center; line-height:1; padding:0; }
+.card-dialog__columns { display:grid; gap:1rem; }
+.card-dialog__fields { display:grid; gap:1rem; min-width:0; }
+.card-dialog fieldset { background:#fff; border:1px solid #e3e9f4; border-radius:1rem; margin:0; min-width:0; padding:1rem; }
+.card-dialog legend { color:#153b91; font-weight:750; padding:0 .25rem; }
+.card-field { display:grid; gap:.35rem; margin:.8rem 0; min-width:0; }
+.card-field label { color:#354669; font-size:.85rem; font-weight:650; }
+.card-field input { border:1px solid #becbe1; border-radius:.65rem; color:#151827; font:inherit; min-height:2.75rem; min-width:0; padding:.55rem .7rem; width:100%; }
+.card-field input[aria-invalid='true'] { border-color:#a82736; }
+.card-field__error { color:#a82736; font-size:.8rem; margin:.1rem 0 .5rem; }
+.card-dialog__inline { display:grid; gap:.5rem; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.card-brand { background:#ecf2ff; border-radius:.6rem; color:#153b91; display:inline-block; font-size:.8rem; font-weight:750; margin:0; padding:.3rem .6rem; }
+.card-preview-wrap { min-width:0; order:-1; perspective:900px; }
+.card-preview { aspect-ratio:1.7; color:#fff; position:relative; transform-style:preserve-3d; transition:transform 450ms ease; width:100%; }
+.card-preview--reverse { transform:rotateY(180deg); }
+.card-preview__front,.card-preview__back { backface-visibility:hidden; background:linear-gradient(135deg,#0a255f,#1253c6 65%,#5a88e7); border-radius:1rem; box-shadow:0 .6rem 1.2rem #09225529; display:flex; flex-direction:column; height:100%; justify-content:space-between; overflow:hidden; padding:1rem; position:absolute; width:100%; }
+.card-preview__brand { align-self:flex-end; font-size:1.2rem; font-style:italic; font-weight:800; letter-spacing:-.06em; }
+.card-preview__brand--mastercard { align-items:center; display:flex; height:1.5rem; position:relative; width:2.6rem; }
+.card-preview__brand--mastercard i { background:#f25b32; border-radius:50%; height:1.45rem; position:absolute; width:1.45rem; }
+.card-preview__brand--mastercard i:last-child { background:#ffb929; left:1rem; mix-blend-mode:screen; }
+.card-preview__number { font-size:clamp(.85rem,3vw,1.2rem); font-variant-numeric:tabular-nums; font-weight:700; letter-spacing:.04em; white-space:nowrap; }
+.card-preview__details { font-size:.65rem; letter-spacing:.05em; text-transform:uppercase; }
+.card-preview__back { align-items:flex-end; justify-content:flex-start; transform:rotateY(180deg); }
+.card-preview__stripe { background:#111827; display:block; height:25%; margin:.5rem -1rem 1rem; width:calc(100% + 2rem); }
+.card-preview__code { background:#eef3ff; border-radius:.2rem; color:#102659; padding:.3rem 1.2rem; }
+.card-consents { display:grid; gap:.7rem; margin-top:1rem !important; }
+.card-consents label { align-items:flex-start; display:flex; font-size:.85rem; gap:.45rem; line-height:1.45; }
+.card-consents input { flex:0 0 1.1rem; height:1.1rem; margin:.1rem 0 0; width:1.1rem; }
+.card-consents a { color:#1748c7; font-weight:700; }
+.card-dialog__message { color:#334b94; font-size:.85rem; margin:.8rem 0 0; }
+.card-dialog__actions { display:flex; flex-wrap:wrap; gap:.75rem; justify-content:flex-end; margin-top:1rem; }
+.card-dialog__actions button { min-height:2.75rem; }
+.card-dialog__actions .primary-button { width:auto; }
+@media (min-width:44rem) { .card-dialog { padding:1.5rem; } .card-dialog__columns { align-items:start; grid-template-columns:minmax(0,1fr) minmax(0,.8fr); } .card-preview-wrap { order:0; position:sticky; top:0; } }
+@media (max-width:23rem) { .card-dialog__inline { grid-template-columns:repeat(2,minmax(0,1fr)); } .card-dialog__inline .card-field:last-child { grid-column:1/-1; } .card-dialog__actions button { width:100%; } }
+@media (prefers-reduced-motion:reduce) { .card-preview { transition:none; } }
