@@ -1,9 +1,10 @@
 import { Provider } from 'react-redux'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { tokenizeCard } from './api/cardTokenization'
 import { makeStore } from './app/store'
+import { writePaymentRecovery } from './app/paymentRecovery'
 import type { Product } from './api/checkoutApi'
 import {
   HEADPHONES_PRODUCT_ID,
@@ -163,7 +164,7 @@ test('shows a server catalog and opens one authoritative product quote', async (
   expect(payButton).toHaveFocus()
 })
 
-test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on refresh', async () => {
+test('tokenizes in the dialog, requires a separate confirmation, and clears secrets on refresh', async () => {
   sessionStorage.clear()
   const fetchMock = installApi()
   jest.mocked(tokenizeCard).mockResolvedValue('opaque-test-token')
@@ -192,7 +193,7 @@ test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on
   await waitFor(() => expect(screen.getByRole('contentinfo')).toHaveTextContent('COP'))
   expect(screen.getByRole('contentinfo')).toHaveTextContent('Total estimado')
   expect(screen.getByText(/Visa terminada en/)).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Confirmar y pagar' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Confirmar y pagar' })).toBeEnabled()
   expect(jest.mocked(tokenizeCard)).toHaveBeenCalledTimes(1)
   expect(fetchMock.mock.calls.some(([path]) => path.startsWith('/checkouts'))).toBe(false)
   const sharedState = JSON.stringify(store.getState())
@@ -210,6 +211,77 @@ test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on
   expect(reloaded.getState().checkout.step).toBe('product')
   expect(screen.queryByRole('dialog', { name: 'Tarjeta y entrega' })).not.toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Revisa tu compra' })).not.toBeInTheDocument()
+})
+
+test('recovers an existing payment by original key after refresh without a new POST', async () => {
+  sessionStorage.clear()
+  const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  expect(writePaymentRecovery({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, idempotencyKey: key })).toBe(true)
+  const fetchMock = installApi()
+  const originalFetch = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input: string) => input === '/checkouts/status'
+    ? Promise.resolve(response({
+      reference: `txn_${key}`, paymentStatus: 'APPROVED', fulfillmentStatus: 'STOCK_UNAVAILABLE',
+    }))
+    : originalFetch(input))
+  renderCheckout(true)
+  expect(await screen.findByText(/Pago aprobado, pero no hay existencias/)).toBeVisible()
+  expect(screen.getByText(`Referencia: txn_${key}`)).toBeVisible()
+  expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
+  expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts/status')).toBe(true)
+  sessionStorage.clear()
+})
+
+test('keeps an approved payment open until delivery is confirmed, then reloads product stock', async () => {
+  sessionStorage.clear()
+  const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  expect(writePaymentRecovery({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, idempotencyKey: key })).toBe(true)
+  const fetchMock = installApi([{ ...headphones, stock: 1 }, speaker])
+  const originalFetch = fetchMock.getMockImplementation()!
+  let statusCalls = 0
+  fetchMock.mockImplementation((input: string) => {
+    if (input === '/checkouts/status') {
+      statusCalls += 1
+      return Promise.resolve(response({ reference: `txn_${key}`, paymentStatus: 'APPROVED',
+        fulfillmentStatus: statusCalls === 1 ? 'NOT_STARTED' : 'CREATED' }))
+    }
+    return originalFetch(input)
+  })
+  renderCheckout(true)
+  expect(await screen.findByText('Pago aprobado. La entrega aún no está confirmada.')).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Volver al producto' })).not.toBeInTheDocument()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Consultar estado' }))
+  expect(await screen.findByText('Pago aprobado y entrega creada.')).toBeVisible()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
+  expect(await screen.findByText('1 unidad disponible')).toBeVisible()
+  expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
+  sessionStorage.clear()
+})
+
+test('bounds automatic status checks without creating another payment', async () => {
+  jest.useFakeTimers()
+  try {
+    sessionStorage.clear()
+    const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    expect(writePaymentRecovery({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, idempotencyKey: key })).toBe(true)
+    const fetchMock = installApi()
+    const originalFetch = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((input: string) => input === '/checkouts/status'
+      ? Promise.resolve(response({ reference: `txn_${key}`, paymentStatus: 'PENDING', fulfillmentStatus: 'NOT_STARTED' }))
+      : originalFetch(input))
+    renderCheckout(true)
+    await act(async () => { await Promise.resolve() })
+    for (let check = 1; check < 3; check++) {
+      await act(async () => { await jest.advanceTimersByTimeAsync(2500) })
+    }
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/checkouts/status')).toHaveLength(3)
+    await act(async () => { await jest.advanceTimersByTimeAsync(10_000) })
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/checkouts/status')).toHaveLength(3)
+    expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
+  } finally {
+    jest.useRealTimers()
+    sessionStorage.clear()
+  }
 })
 
 test('shows exactly two product accordions with description open and verified details on demand', async () => {
