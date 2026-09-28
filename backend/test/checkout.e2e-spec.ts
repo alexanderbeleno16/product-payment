@@ -33,6 +33,7 @@ const product = {
 const body = {
   productId,
   quantity: 1,
+  expectedTotalCents: 1_700_000,
   installments: 2,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -216,6 +217,7 @@ describe('Checkout HTTP contract (e2e)', () => {
     expect(schemas.CreateCheckoutDto.required).toEqual(
       expect.arrayContaining([
         'installments',
+        'expectedTotalCents',
         'delivery',
         'cardToken',
         'acceptanceToken',
@@ -238,6 +240,12 @@ describe('Checkout HTTP contract (e2e)', () => {
         .enum,
     ).toEqual([true]);
     expect(schemas.CreateCheckoutDto.properties.installments.minimum).toBe(1);
+    expect(
+      schemas.CreateCheckoutDto.properties.expectedTotalCents.minimum,
+    ).toBe(1);
+    expect(
+      schemas.CreateCheckoutDto.properties.expectedTotalCents.maximum,
+    ).toBe(Number.MAX_SAFE_INTEGER);
     expect(document.paths['/checkouts/status'].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -349,6 +357,11 @@ describe('Checkout HTTP contract (e2e)', () => {
       { ...body, installments: 0 },
       { ...body, installments: 1.5 },
       { ...body, installments: Number.MAX_SAFE_INTEGER + 1 },
+      { ...body, expectedTotalCents: undefined },
+      { ...body, expectedTotalCents: '1700000' },
+      { ...body, expectedTotalCents: 0 },
+      { ...body, expectedTotalCents: 1.5 },
+      { ...body, expectedTotalCents: Number.MAX_SAFE_INTEGER + 1 },
     ]) {
       await request(app.getHttpServer())
         .post('/checkouts')
@@ -374,6 +387,25 @@ describe('Checkout HTTP contract (e2e)', () => {
       .send(body)
       .expect(409);
     expect(createPending).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('rejects a changed quote before creating a transaction or touching payment', async () => {
+    findById.mockResolvedValueOnce({
+      ...product,
+      priceCents: product.priceCents + 1,
+    });
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body)
+      .expect(409)
+      .expect(({ body: response }) => {
+        expect(response.message).toBe('QUOTE_CHANGED');
+      });
+    expect(saved).toBeNull();
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -475,6 +507,23 @@ describe('Checkout HTTP contract (e2e)', () => {
       .set('Idempotency-Key', idempotencyKey)
       .send({ ...body, installments: 3 })
       .expect(409);
+    findById.mockClear();
+    findById.mockResolvedValue({
+      ...product,
+      priceCents: product.priceCents + 1,
+    });
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body)
+      .expect(201)
+      .expect(first.body);
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send({ ...body, expectedTotalCents: body.expectedTotalCents + 1 })
+      .expect(409);
+    expect(findById).not.toHaveBeenCalled();
     expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
     expect(submit.mock.calls[0][0]).toMatchObject({ installments: 2 });

@@ -23,8 +23,10 @@ function canonicalizeCheckoutInput(raw: unknown): CheckoutInput | null {
     typeof raw.delivery.addressLine !== 'string' ||
     typeof raw.delivery.city !== 'string' ||
     typeof raw.quantity !== 'number' ||
+    typeof raw.expectedTotalCents !== 'number' ||
     typeof raw.installments !== 'number' ||
     !Number.isSafeInteger(raw.quantity) ||
+    !Number.isSafeInteger(raw.expectedTotalCents) ||
     !Number.isSafeInteger(raw.installments)
   )
     return null;
@@ -33,6 +35,7 @@ function canonicalizeCheckoutInput(raw: unknown): CheckoutInput | null {
     idempotencyKey: raw.idempotencyKey.trim().toLowerCase(),
     productId: raw.productId.trim().toLowerCase(),
     quantity: raw.quantity,
+    expectedTotalCents: raw.expectedTotalCents,
     installments: raw.installments,
     customerEmail: raw.customerEmail.trim().toLowerCase(),
     delivery: {
@@ -45,6 +48,7 @@ function canonicalizeCheckoutInput(raw: unknown): CheckoutInput | null {
     !isUuidV4(input.idempotencyKey) ||
     !isUuidV4(input.productId) ||
     input.quantity < 1 ||
+    input.expectedTotalCents < 1 ||
     input.installments < 1 ||
     input.customerEmail.length > 254 ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customerEmail) ||
@@ -89,12 +93,20 @@ export class StartCheckout {
     const existing = await this.store.findByIdempotencyKey(
       input.idempotencyKey,
     );
-    if (existing) return this.replay(existing, requestFingerprint);
+    if (existing)
+      return this.replay(
+        existing,
+        requestFingerprint,
+        input.expectedTotalCents,
+      );
 
     const product = await this.products.findById(input.productId);
     if (!product) return { ok: false, reason: 'PRODUCT_NOT_FOUND' };
     const quote = priceCheckout(product, input.quantity);
     if (!quote.ok) return quote;
+    if (quote.value.totalCents !== input.expectedTotalCents) {
+      return { ok: false, reason: 'QUOTE_CHANGED' };
+    }
 
     try {
       const checkout = await this.store.createPending({
@@ -113,15 +125,17 @@ export class StartCheckout {
         input.idempotencyKey,
       );
       if (!winner) throw error;
-      return this.replay(winner, requestFingerprint);
+      return this.replay(winner, requestFingerprint, input.expectedTotalCents);
     }
   }
 
   private replay(
     existing: CheckoutTransaction,
     fingerprint: string,
+    expectedTotalCents: number,
   ): CheckoutResult<CheckoutTransaction> {
-    return existing.requestFingerprint === fingerprint
+    return existing.requestFingerprint === fingerprint &&
+      existing.totalCents === expectedTotalCents
       ? { ok: true, value: existing }
       : { ok: false, reason: 'IDEMPOTENCY_CONFLICT' };
   }
