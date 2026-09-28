@@ -54,6 +54,8 @@ npm run start:dev
 
 The API listens at `http://localhost:3000` by default (`PORT` may override it). Local interactive API documentation is at [Swagger UI](http://localhost:3000/api); its generated [OpenAPI JSON](http://localhost:3000/api-json) describes the same running routes. These are **local URLs**, not verified public deployment links. `DATABASE_URL` and all six `PAYMENT_*` values below are required at application startup, even for product-only reads; no `.env` file is loaded automatically. The committed [environment template](.env.example) lists required names with no values and is not an executable setup. In particular, `PAYMENT_EVENTS_SECRET` must be the separate sandbox events secret. Keep payment credentials and secret values in untracked, server-side configuration. The adapter requires an independently configured exact sandbox hostname and matching endpoint/key families. Configuration alone does **not** authorize live sandbox requests; one separately authorized synthetic UAT initiation was verified on 2026-09-26 (see [Verify](#verify)).
 
+The Nest API applies its built-in security headers to successful and error responses, including CSP, `X-Content-Type-Options`, and `Referrer-Policy`, and suppresses `X-Powered-By`. HSTS is intentionally disabled until public HTTPS, certificate and domain coverage, and the TLS-terminating edge are verified. These API headers do not protect a separately hosted SPA; its serving layer needs its own policy. Local HTTP and header tests do not establish a secure AWS deployment.
+
 | Variable | Purpose |
 | --- | --- |
 | `PAYMENT_API_BASE_URL` | Approved HTTPS sandbox API base URL ending in `/v1`. |
