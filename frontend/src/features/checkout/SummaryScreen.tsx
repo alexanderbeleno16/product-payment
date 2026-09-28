@@ -19,6 +19,8 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const confirmDialogRef = useRef<HTMLDialogElement>(null)
   const confirmTriggerRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const confirmationSentRef = useRef(false)
   const { productId, quantity, product } = useAppSelector((state) => state.checkout)
   const [quote, setQuote] = useState<CheckoutQuote | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -50,6 +52,11 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
     confirmTriggerRef.current?.focus()
   }
 
+  function openConfirmation() {
+    confirmDialogRef.current?.showModal()
+    cancelRef.current?.focus()
+  }
+
   return <>
     <CheckoutHeader step={3} onCatalog={onLeave} />
     <main className="checkout-main summary-main">
@@ -61,16 +68,16 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
           <p className="eyebrow">Tu producto</p>
           <h2 id="summary-product-title">{product?.name ?? 'Producto seleccionado'}</h2>
           <p>{quantity} {quantity === 1 ? 'unidad' : 'unidades'}</p>
+          {status === 'loading' && <p role="status">Actualizando el total con la tienda…</p>}
+          {status === 'error' && <div className="summary-error" role="alert">
+            <p>No pudimos actualizar el precio y la disponibilidad. No se puede continuar con un total anterior.</p>
+            <button type="button" className="secondary-button" onClick={() => {
+              setStatus('loading')
+              setQuote(null)
+              setAttempt((value) => value + 1)
+            }}>Reintentar</button>
+          </div>}
           <dl className="summary-lines">
-            {status === 'loading' && <div role="status">Actualizando el total con la tienda…</div>}
-            {status === 'error' && <div role="alert">
-              <p>No pudimos actualizar el precio y la disponibilidad. No se puede continuar con un total anterior.</p>
-              <button type="button" className="secondary-button" onClick={() => {
-                setStatus('loading')
-                setQuote(null)
-                setAttempt((value) => value + 1)
-              }}>Reintentar</button>
-            </div>}
             {status === 'ready' && quote && <>
               <div><dt>Productos</dt><dd>{formatMoney(quote.productAmountCents)}</dd></div>
               <div><dt>Tarifa base</dt><dd>{formatMoney(quote.baseFeeCents)}</dd></div>
@@ -96,17 +103,25 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
       <div className="checkout-footer__inner">
         <div className="subtotal"><span>Total estimado</span><strong>{status === 'ready' && quote ? formatMoney(quote.totalCents) : '—'}</strong></div>
         <button ref={confirmTriggerRef} type="button" className="primary-button" disabled={!onConfirm || status !== 'ready' || !quote}
-          onClick={() => confirmDialogRef.current?.showModal()}>Confirmar y pagar</button>
+          onClick={openConfirmation}>Confirmar y pagar</button>
       </div>
     </footer>
     <dialog ref={confirmDialogRef} className="payment-confirmation" aria-labelledby="payment-confirm-title"
+      aria-describedby="payment-confirm-description"
       onClose={() => confirmTriggerRef.current?.focus()}>
       <h2 id="payment-confirm-title">Confirma tu pago</h2>
-      <p>Se enviará una única solicitud de pago por {quote ? formatMoney(quote.totalCents) : '—'}.</p>
+      <p id="payment-confirm-description">Revisa el importe final antes de enviar la solicitud. El resultado se confirmará en la siguiente pantalla.</p>
+      {quote && <dl className="payment-confirmation__amounts">
+        <div><dt>Producto</dt><dd>{formatMoney(quote.productAmountCents)}</dd></div>
+        <div><dt>Tarifa base</dt><dd>{formatMoney(quote.baseFeeCents)}</dd></div>
+        <div><dt>Entrega</dt><dd>{formatMoney(quote.deliveryFeeCents)}</dd></div>
+        <div className="summary-lines__total"><dt>Total a pagar</dt><dd>{formatMoney(quote.totalCents)}</dd></div>
+      </dl>}
       <div className="payment-confirmation__actions">
-        <button type="button" className="secondary-button" onClick={closeConfirmation}>Volver al resumen</button>
+        <button ref={cancelRef} type="button" className="secondary-button" onClick={closeConfirmation}>Volver al resumen</button>
         <button type="button" className="primary-button" onClick={() => {
-          if (status !== 'ready' || !quote) return
+          if (confirmationSentRef.current || status !== 'ready' || !quote) return
+          confirmationSentRef.current = true
           confirmDialogRef.current?.close()
           onConfirm?.(quote)
         }}>Enviar pago</button>

@@ -4,12 +4,13 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { tokenizeCard } from './api/cardTokenization'
 import { makeStore } from './app/store'
-import { writePaymentRecovery } from './app/paymentRecovery'
+import { markPaymentSubmissionRejected, readPaymentRecovery, writePaymentRecovery } from './app/paymentRecovery'
 import type { Product } from './api/checkoutApi'
 import {
   HEADPHONES_PRODUCT_ID,
   SPEAKER_PRODUCT_ID,
 } from './features/checkout/productImages'
+import { paymentStorageFailed } from './features/checkout/paymentSlice'
 
 jest.mock('./api/cardTokenization', () => ({
   TokenizationError: class extends Error { reason = 'unavailable' },
@@ -225,10 +226,74 @@ test('recovers an existing payment by original key after refresh without a new P
     }))
     : originalFetch(input))
   renderCheckout(true)
-  expect(await screen.findByText(/Pago aprobado, pero no hay existencias/)).toBeVisible()
-  expect(screen.getByText(`Referencia: txn_${key}`)).toBeVisible()
+  expect(await screen.findByText(/El pago fue aprobado, pero no hubo existencias/)).toBeVisible()
+  expect(screen.getByText(`txn_${key}`)).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Volver al producto' })).not.toBeInTheDocument()
+  expect(readPaymentRecovery()?.idempotencyKey).toBe(key)
   expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
   expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts/status')).toBe(true)
+  sessionStorage.clear()
+})
+
+test('retains approved stock-exception tracking on manual recheck and refresh', async () => {
+  sessionStorage.clear()
+  const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  expect(writePaymentRecovery({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, idempotencyKey: key })).toBe(true)
+  const fetchMock = installApi()
+  const originalFetch = fetchMock.getMockImplementation()!
+  let fulfillmentStatus = 'STOCK_UNAVAILABLE'
+  fetchMock.mockImplementation((input: string) => input === '/checkouts/status'
+    ? Promise.resolve(response({ reference: `txn_${key}`, paymentStatus: 'APPROVED', fulfillmentStatus }))
+    : originalFetch(input))
+  const first = renderCheckout(true)
+  expect(await screen.findByRole('heading', { name: 'Tu pedido necesita atención' })).toBeVisible()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Consultar estado' }))
+  await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/checkouts/status')).toHaveLength(2))
+  expect(readPaymentRecovery()?.idempotencyKey).toBe(key)
+  expect(screen.queryByRole('button', { name: 'Volver al producto' })).not.toBeInTheDocument()
+  first.unmount()
+  renderCheckout(true)
+  expect(await screen.findByRole('heading', { name: 'Tu pedido necesita atención' })).toBeVisible()
+  fulfillmentStatus = 'CREATED'
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Consultar estado' }))
+  expect(await screen.findByText('Pago aprobado y entrega creada.')).toBeVisible()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(readPaymentRecovery()).toBeNull()
+  expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
+  sessionStorage.clear()
+})
+
+test('rejected checkout is retryable after refresh only when status confirms no transaction', async () => {
+  sessionStorage.clear()
+  const key = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  expect(writePaymentRecovery({ productId: HEADPHONES_PRODUCT_ID, quantity: 1, idempotencyKey: key })).toBe(true)
+  expect(markPaymentSubmissionRejected(key)).toBe(true)
+  const fetchMock = installApi()
+  const originalFetch = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input: string) => input === '/checkouts/status'
+    ? Promise.resolve(response(null, 404)) : originalFetch(input))
+  renderCheckout(true)
+  expect(await screen.findByRole('heading', { name: 'No se inició el pago' })).toBeVisible()
+  expect(readPaymentRecovery()).toBeNull()
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(fetchMock.mock.calls.some(([path]) => path === '/checkouts')).toBe(false)
+  sessionStorage.clear()
+})
+
+test('an unreadable existing recovery blocks another purchase without clearing its record', async () => {
+  sessionStorage.clear()
+  sessionStorage.setItem('shopifast-payment-recovery', '{')
+  installApi()
+  const store = makeStore()
+  store.dispatch(paymentStorageFailed())
+  render(<Provider store={store}><App /></Provider>)
+  expect(screen.getByRole('heading', { name: 'No se pudo continuar' })).toBeVisible()
+  expect(screen.getByText(/Existe una solicitud previa que no podemos leer/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Volver al producto' })).not.toBeInTheDocument()
+  expect(sessionStorage.getItem('shopifast-payment-recovery')).toBe('{')
+  expect(screen.queryByRole('button', { name: 'Confirmar y pagar' })).not.toBeInTheDocument()
   sessionStorage.clear()
 })
 

@@ -35,3 +35,31 @@ test('blocks stale totals after a failed quote and retries without a payment POS
   expect(fetchMock).toHaveBeenCalledTimes(2)
   expect(fetchMock.mock.calls.every(([, options]) => options?.method !== 'POST')).toBe(true)
 })
+
+test('opens a labelled confirmation with fee breakdown and restores focus on cancel', async () => {
+  const quote = {
+    productId: HEADPHONES_PRODUCT_ID, quantity: 1, currency: 'COP',
+    unitPriceCents: 100_000, productAmountCents: 100_000,
+    baseFeeCents: 20_000, deliveryFeeCents: 30_000, totalCents: 150_000,
+  }
+  globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => quote })
+  const store = makeStore()
+  store.dispatch(progressRestored({ productId: HEADPHONES_PRODUCT_ID, quantity: 1 }))
+  const onConfirm = jest.fn()
+  render(<Provider store={store}><SummaryScreen prepared={prepared} onLeave={jest.fn()} onConfirm={onConfirm} /></Provider>)
+  const trigger = await screen.findByRole('button', { name: 'Confirmar y pagar' })
+  await userEvent.setup().click(trigger)
+  const dialog = screen.getByRole('dialog', { name: 'Confirma tu pago' })
+  expect(dialog).toHaveAccessibleDescription(/Revisa el importe final/)
+  expect(screen.getByRole('button', { name: 'Volver al resumen' })).toHaveFocus()
+  expect(dialog).toHaveTextContent('Tarifa base')
+  expect(dialog).toHaveTextContent('Entrega')
+  expect(dialog).toHaveTextContent('COP 1.500')
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al resumen' }))
+  expect(trigger).toHaveFocus()
+  expect(onConfirm).not.toHaveBeenCalled()
+  await userEvent.setup().click(trigger)
+  await userEvent.setup().dblClick(screen.getByRole('button', { name: 'Enviar pago' }))
+  expect(onConfirm).toHaveBeenCalledTimes(1)
+  expect(onConfirm).toHaveBeenCalledWith(quote)
+})

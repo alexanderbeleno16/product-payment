@@ -7,7 +7,10 @@ import {
   paymentSubmissionUnknown, paymentStatusReceived, paymentStatusRequested,
   paymentStatusUnavailable,
 } from '../features/checkout/paymentSlice'
-import { hasPaymentRecoveryRecord, readPaymentRecovery, writePaymentRecovery } from './paymentRecovery'
+import {
+  clearPaymentRecovery, hasPaymentRecoveryRecord, markPaymentSubmissionRejected,
+  readPaymentRecovery, writePaymentRecovery,
+} from './paymentRecovery'
 import type { AppDispatch, RootState } from './store'
 
 type GetState = () => RootState
@@ -16,7 +19,10 @@ const statusInFlight = new Map<string, Promise<void>>()
 export function reconcilePayment(dispatch: AppDispatch, getState: GetState): Promise<void> {
   const current = getState().payment
   const key = current.idempotencyKey
-  if (!key || ['idle', 'resolved', 'rejected', 'storage_error'].includes(current.phase))
+  const trackingStockException = current.phase === 'resolved' &&
+    current.paymentStatus === 'APPROVED' && current.fulfillmentStatus === 'STOCK_UNAVAILABLE'
+  if (!key || ['idle', 'rejected', 'storage_error'].includes(current.phase) ||
+    (current.phase === 'resolved' && !trackingStockException))
     return Promise.resolve()
   const existing = statusInFlight.get(key)
   if (existing) return existing
@@ -24,8 +30,13 @@ export function reconcilePayment(dispatch: AppDispatch, getState: GetState): Pro
   const requestVersion = getState().payment.requestVersion
   const request = getCheckoutStatus(key, new AbortController().signal).then((status) => {
     dispatch(paymentStatusReceived({ idempotencyKey: key, requestVersion, status }))
-  }).catch(() => {
-    dispatch(paymentStatusUnavailable({ key, requestVersion }))
+  }).catch((error: unknown) => {
+    const saved = readPaymentRecovery()
+    if (error instanceof CheckoutTransportError && error.outcome === 'not_found' &&
+      saved?.idempotencyKey === key && saved.submissionRejected) {
+      dispatch(paymentSubmissionRejected(key))
+      if (getState().payment.phase === 'rejected') clearPaymentRecovery()
+    } else dispatch(paymentStatusUnavailable({ key, requestVersion }))
   }).finally(() => { statusInFlight.delete(key) })
   statusInFlight.set(key, request)
   return request
@@ -81,8 +92,7 @@ export async function submitPayment(
     }, key, new AbortController().signal)
   } catch (error) {
     if (error instanceof CheckoutTransportError && error.outcome === 'rejected') {
-      dispatch(paymentSubmissionRejected(key))
-      return true
+      markPaymentSubmissionRejected(key)
     }
     dispatch(paymentSubmissionUnknown(key))
   }
