@@ -2,6 +2,15 @@ import { isUuidV4 } from '../api/checkoutPaymentApi'
 
 const STORAGE_KEY = 'shopifast-payment-recovery'
 
+// Unknown or unreadable records must not be overwritten with a new payment identity.
+export function hasPaymentRecoveryRecord(): boolean {
+  try {
+    return sessionStorage.getItem(STORAGE_KEY) !== null
+  } catch {
+    return true
+  }
+}
+
 export interface PaymentRecovery {
   productId: string
   quantity: number
