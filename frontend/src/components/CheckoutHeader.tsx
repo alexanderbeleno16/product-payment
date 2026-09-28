@@ -10,7 +10,7 @@ const steps = [
   'Producto',
 ] as const
 
-function CheckoutHeader({ step }: { step: 1 | 2 }) {
+function CheckoutHeader({ step, onCatalog }: { step: 1 | 2 | 3; onCatalog?: () => void }) {
   const dispatch = useAppDispatch()
 
   return (
@@ -20,7 +20,7 @@ function CheckoutHeader({ step }: { step: 1 | 2 }) {
           type="button"
           className="brand"
           aria-label="ShopiFast: ir al catálogo"
-          onClick={() => dispatch(catalogReturnRequested())}
+          onClick={() => { onCatalog?.(); dispatch(catalogReturnRequested()) }}
         >
           <img
             src="/brand-mark.webp"
