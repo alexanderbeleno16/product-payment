@@ -1,0 +1,28 @@
+.payment-status-main { padding-block: 2rem 4rem; }
+.payment-status-main > h1 { font-size: clamp(1.7rem, 5vw, 2.4rem); margin: 0 0 1.25rem; }
+.payment-status-card {
+  background: #fff;
+  border: 1px solid #e1e8f4;
+  border-radius: 1.25rem;
+  max-width: 40rem;
+  min-width: 0;
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+.payment-status-card h2 { color: #0d1933; font-size: clamp(1.3rem, 4vw, 1.65rem); margin: 0; }
+.payment-status-message { color: #526482; line-height: 1.55; margin-top: 1rem; }
+.payment-status-message p { margin: 0; }
+.payment-status-reference {
+  border-top: 1px solid #e1e8f4;
+  display: grid;
+  gap: 0.35rem;
+  margin: 1.5rem 0 0;
+  padding-top: 1.25rem;
+}
+.payment-status-reference span { color: #526482; font-size: 0.9rem; }
+.payment-status-reference strong { color: #123c91; overflow-wrap: anywhere; }
+.payment-status-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+.payment-status-actions button { min-height: 3rem; min-width: min(100%, 12rem); }
+@media (max-width: 26rem) {
+  .payment-status-actions { flex-direction: column; }
+  .payment-status-actions button { width: 100%; }
+}

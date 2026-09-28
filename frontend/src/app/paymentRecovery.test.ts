@@ -1,5 +1,6 @@
 import {
-  clearPaymentRecovery, readPaymentRecovery, writePaymentRecovery,
+  clearPaymentRecovery, hasPaymentRecoveryRecord, markPaymentSubmissionRejected,
+  readPaymentRecovery, writePaymentRecovery,
 } from './paymentRecovery'
 import { HEADPHONES_PRODUCT_ID } from '../features/checkout/productImages'
 
@@ -28,6 +29,7 @@ test('rejects malformed, obsolete, invalid and expanded stored payloads', () => 
   for (const raw of [
     '{',
     JSON.stringify({ version: 2, ...recovery }),
+    JSON.stringify({ version: 2, ...recovery, submissionRejected: true, cardToken: 'forbidden' }),
     JSON.stringify({ version: 1, ...recovery, cardToken: 'forbidden' }),
     JSON.stringify({ version: 1, ...recovery, quantity: 0 }),
     JSON.stringify({ version: 1, ...recovery, idempotencyKey: 'bad' }),
@@ -36,6 +38,24 @@ test('rejects malformed, obsolete, invalid and expanded stored payloads', () => 
     sessionStorage.setItem(storageKey, raw)
     expect(readPaymentRecovery()).toBeNull()
   }
+})
+
+test('marks only the same durable identity as definitively rejected', () => {
+  expect(writePaymentRecovery(recovery)).toBe(true)
+  expect(markPaymentSubmissionRejected('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe(false)
+  expect(markPaymentSubmissionRejected(key)).toBe(true)
+  expect(readPaymentRecovery()).toEqual({ ...recovery, submissionRejected: true })
+  expect(sessionStorage.getItem(storageKey)).toBe(JSON.stringify({
+    version: 2, ...recovery, submissionRejected: true,
+  }))
+})
+
+test('unreadable records remain detectable and cannot be silently replaced', () => {
+  sessionStorage.setItem(storageKey, '{')
+  expect(hasPaymentRecoveryRecord()).toBe(true)
+  expect(readPaymentRecovery()).toBeNull()
+  expect(markPaymentSubmissionRejected(key)).toBe(false)
+  expect(sessionStorage.getItem(storageKey)).toBe('{')
 })
 
 test('does not report recovery durability when browser storage fails', () => {
