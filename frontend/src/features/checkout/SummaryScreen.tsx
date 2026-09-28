@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
-import { getQuote } from '../../api/checkoutApi'
+import { getProduct, getQuote } from '../../api/checkoutApi'
 import type { CheckoutQuote } from '../../api/checkoutApi'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import CheckoutHeader from '../../components/CheckoutHeader'
@@ -7,15 +7,17 @@ import { formatMoney } from '../../lib/formatMoney'
 import type { TokenizedCardDelivery } from './cardForm'
 import { productReturnRequested } from './checkoutSlice'
 import { getProductImage } from './productImages'
+import { readContactProgress } from '../../app/contactProgress'
 import './SummaryScreen.css'
 
 interface Props {
-  prepared: TokenizedCardDelivery
+  prepared: TokenizedCardDelivery | null
   onLeave: () => void
+  onRetokenize: () => void
   onConfirm?: (quote: CheckoutQuote) => void
 }
 
-function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
+function SummaryScreen({ prepared, onLeave, onRetokenize, onConfirm }: Props) {
   const dispatch = useAppDispatch()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const confirmDialogRef = useRef<HTMLDialogElement>(null)
@@ -25,11 +27,24 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
   const confirmationSentRef = useRef(false)
   const { productId, quantity, product } = useAppSelector((state) => state.checkout)
   const [quote, setQuote] = useState<CheckoutQuote | null>(null)
+  const [restoredProductName, setRestoredProductName] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [attempt, setAttempt] = useState(0)
   const image = productId ? getProductImage(productId) : null
+  const contact = prepared ? {
+    customerEmail: prepared.customerEmail, ...prepared.delivery,
+  } : readContactProgress(productId)
 
   useEffect(() => { headingRef.current?.focus() }, [])
+
+  useEffect(() => {
+    if (!productId || product?.id === productId) return
+    const controller = new AbortController()
+    void getProduct(productId, controller.signal).then((current) => {
+      if (!controller.signal.aborted) setRestoredProductName(current.name)
+    }).catch(() => { /* The server quote still determines whether checkout can continue. */ })
+    return () => controller.abort()
+  }, [productId, product])
 
   useEffect(() => {
     if (!productId) return
@@ -84,7 +99,7 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
         <section className="summary-card summary-product" aria-labelledby="summary-product-title">
           {image && <img className="summary-product__image" src={image.src} alt={image.alt} />}
           <div><p className="eyebrow">Tu producto</p>
-          <h2 id="summary-product-title">{product?.name ?? 'Producto seleccionado'}</h2>
+          <h2 id="summary-product-title">{product?.name ?? restoredProductName ?? 'Producto seleccionado'}</h2>
           <p className="summary-quantity">Cantidad: {quantity} {quantity === 1 ? 'unidad' : 'unidades'}</p></div>
           {status === 'loading' && <p role="status">Actualizando el total con la tienda…</p>}
           {status === 'error' && <div className="summary-error" role="alert">
@@ -99,15 +114,16 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
         </section>
         <section className="summary-card" aria-labelledby="summary-delivery-title">
           <h2 id="summary-delivery-title">Datos de entrega</h2>
-          <dl className="summary-lines">
-            <div><dt>Recibe</dt><dd>{prepared.delivery.recipientName}</dd></div>
-            <div><dt>Dirección</dt><dd>{prepared.delivery.addressLine}, {prepared.delivery.city}</dd></div>
-            <div><dt>Contacto</dt><dd>{prepared.customerEmail}</dd></div>
-          </dl>
+          {contact ? <dl className="summary-lines">
+            <div><dt>Recibe</dt><dd>{contact.recipientName}</dd></div>
+            <div><dt>Dirección</dt><dd>{contact.addressLine}, {contact.city}</dd></div>
+            <div><dt>Contacto</dt><dd>{contact.customerEmail}</dd></div>
+          </dl> : <p>Completa los datos de entrega para continuar.</p>}
         </section>
         <section className="summary-card" aria-labelledby="summary-payment-title">
           <h2 id="summary-payment-title">Método de pago</h2>
-          <dl className="summary-lines"><div><dt>Tarjeta</dt><dd>{prepared.cardBrand === 'visa' ? 'Visa' : 'Mastercard'} terminada en {prepared.cardLastFour}</dd></div></dl>
+          {prepared ? <dl className="summary-lines"><div><dt>Tarjeta</dt><dd>{prepared.cardBrand === 'visa' ? 'Visa' : 'Mastercard'} terminada en {prepared.cardLastFour}</dd></div></dl>
+            : <p role="status">Por seguridad, la tarjeta no se guarda al actualizar la página. Ingresa sus datos para continuar desde este resumen.</p>}
           <p className="summary-notice">Enviar el pago inicia la solicitud; el resultado se confirmará en la siguiente pantalla.</p>
         </section>
         <section className="summary-card summary-quote" aria-labelledby="summary-quote-title">
@@ -124,8 +140,9 @@ function SummaryScreen({ prepared, onLeave, onConfirm }: Props) {
     <footer className="checkout-footer summary-footer">
       <div className="checkout-footer__inner">
         <div className="subtotal"><span>Total estimado</span><strong>{status === 'ready' && quote ? formatMoney(quote.totalCents) : '—'}</strong></div>
-        <button ref={confirmTriggerRef} type="button" className="primary-button" disabled={!onConfirm || status !== 'ready' || !quote}
+        {prepared ? <button ref={confirmTriggerRef} type="button" className="primary-button" disabled={!onConfirm || status !== 'ready' || !quote}
           onClick={openConfirmation}>Confirmar y pagar</button>
+          : <button type="button" className="primary-button" onClick={onRetokenize}>Ingresar tarjeta para continuar</button>}
       </div>
     </footer>
     <dialog ref={confirmDialogRef} className="payment-confirmation" aria-labelledby="payment-confirm-title"
