@@ -23,5 +23,8 @@
 .payment-confirmation__amounts dd { color: #0d1933; font-weight: 700; margin: 0; }
 .payment-confirmation__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
 .payment-confirmation__actions button { flex: 1 1 10rem; min-height: 3rem; min-width: 0; }
-@media (max-width: 26rem) { .payment-confirmation__actions { flex-direction: column; } }
+@media (max-width: 26rem) {
+  .payment-confirmation__actions { flex-direction: column; }
+  .payment-confirmation__actions button { flex: 0 0 auto; width: 100%; }
+}
 @media (min-width: 48rem) { .summary-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
