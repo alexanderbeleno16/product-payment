@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DataSource } from 'typeorm';
+import { ReconcilePendingPayments } from '../../../application/reconcile-pending-payments';
+import { ReconcileKnownPayment } from '../../../application/reconcile-known-payment';
 import type { DatabaseConnection } from './database-connection';
 import { createDataSource } from './data-source';
 import { TypeOrmPendingReconciliationQueue } from './typeorm-pending-reconciliation.queue';
@@ -102,6 +104,34 @@ const databaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
         [reference],
       );
       expect(await queue.claim(5, 30, 90)).toEqual([]);
+    });
+
+    it('leaves later work claimable by another worker during a slow lookup', async () => {
+      const first = await pending();
+      const second = await pending();
+      let finishLookup!: (result: { ok: true }) => void;
+      const execute = jest.fn().mockImplementationOnce(
+        () => new Promise((resolve) => { finishLookup = resolve; }),
+      ).mockResolvedValue({ ok: true });
+      const worker = new ReconcilePendingPayments(
+        queue,
+        { execute } as unknown as ReconcileKnownPayment,
+      );
+
+      const running = worker.run(2, 30, 90);
+      for (let attempt = 0; attempt < 20 && execute.mock.calls.length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      const processing = execute.mock.calls[0]?.[0] as string;
+      expect([first, second]).toContain(processing);
+      const competingClaim = await queue.claim(1, 30, 90);
+      expect(competingClaim.map((claim) => claim.reference)).toEqual([
+        processing === first ? second : first,
+      ]);
+
+      finishLookup({ ok: true });
+      await expect(running).resolves.toEqual({ checked: 1, failures: 0 });
+      await queue.release(competingClaim[0], 15);
     });
   },
 );
