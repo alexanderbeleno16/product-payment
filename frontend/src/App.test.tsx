@@ -2,12 +2,18 @@ import { Provider } from 'react-redux'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import { tokenizeCard } from './api/cardTokenization'
 import { makeStore } from './app/store'
 import type { Product } from './api/checkoutApi'
 import {
   HEADPHONES_PRODUCT_ID,
   SPEAKER_PRODUCT_ID,
 } from './features/checkout/productImages'
+
+jest.mock('./api/cardTokenization', () => ({
+  TokenizationError: class extends Error { reason = 'unavailable' },
+  tokenizeCard: jest.fn(),
+}))
 
 function response(body: unknown, status = 200): Response {
   return {
@@ -93,12 +99,29 @@ function installApi(products: Product[] = [headphones, speaker]) {
   return fetchMock
 }
 
-function renderCheckout() {
-  return render(
-    <Provider store={makeStore()}>
+function renderCheckout(persist = false) {
+  const store = makeStore(persist)
+  const mounted = render(
+    <Provider store={store}>
       <App />
     </Provider>,
   )
+  return { ...mounted, store }
+}
+
+function syntheticVisa(): string {
+  const prefix = '4'.padEnd(15, '0')
+  for (let digit = 0; digit < 10; digit++) {
+    const candidate = `${prefix}${digit}`
+    let sum = 0
+    for (let index = 0; index < candidate.length; index++) {
+      let value = Number(candidate[candidate.length - 1 - index])
+      if (index % 2) value = value * 2 > 9 ? value * 2 - 9 : value * 2
+      sum += value
+    }
+    if (sum % 10 === 0) return candidate
+  }
+  throw new Error('No synthetic candidate')
 }
 
 async function openProduct(name: string) {
@@ -138,6 +161,53 @@ test('shows a server catalog and opens one authoritative product quote', async (
   await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
   expect(payButton).toHaveFocus()
+})
+
+test('tokenizes in the dialog, shows a non-paying summary, and clears secrets on refresh', async () => {
+  sessionStorage.clear()
+  const fetchMock = installApi()
+  jest.mocked(tokenizeCard).mockResolvedValue('opaque-test-token')
+  const user = userEvent.setup()
+  const { store, unmount } = renderCheckout(true)
+  await openProduct('Audífonos inalámbricos')
+  const payButton = screen.getByRole('button', { name: 'Pagar con tarjeta de crédito' })
+  await waitFor(() => expect(payButton).toBeEnabled())
+  await user.click(payButton)
+  await screen.findByRole('link', { name: 'términos de uso' })
+  await user.type(screen.getByLabelText('Número de tarjeta'), syntheticVisa())
+  await user.type(screen.getByLabelText('Nombre en la tarjeta'), 'Persona de Prueba')
+  await user.type(screen.getByLabelText('Mes de vencimiento (MM)'), '12')
+  await user.type(screen.getByLabelText('Año de vencimiento (AA)'), '28')
+  await user.type(screen.getByLabelText('Código de seguridad'), '123')
+  await user.type(screen.getByLabelText('Correo electrónico'), 'test@example.test')
+  await user.type(screen.getByLabelText('Nombre de quien recibe'), 'Persona de Prueba')
+  await user.type(screen.getByLabelText('Dirección de entrega'), 'Calle de Prueba 123')
+  await user.type(screen.getByLabelText('Ciudad'), 'Bogotá')
+  const [policy, data] = screen.getAllByRole('checkbox')
+  await user.click(policy)
+  await user.click(data)
+  await user.click(screen.getByRole('button', { name: 'Continuar al resumen' }))
+  expect(await screen.findByRole('heading', { name: 'Revisa tu compra' })).toHaveFocus()
+  expect(screen.queryByRole('dialog', { name: 'Tarjeta y entrega' })).not.toBeInTheDocument()
+  expect(await screen.findByText('Total estimado')).toBeVisible()
+  expect(screen.getByText(/Visa terminada en/)).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Confirmar y pagar' })).toBeDisabled()
+  expect(jest.mocked(tokenizeCard)).toHaveBeenCalledTimes(1)
+  expect(fetchMock.mock.calls.some(([path]) => path.startsWith('/checkouts'))).toBe(false)
+  const sharedState = JSON.stringify(store.getState())
+  expect(sharedState).not.toContain('opaque-test-token')
+  expect(sharedState).not.toContain(syntheticVisa())
+  expect(sharedState).not.toContain('123')
+  expect(sessionStorage.getItem('shopifast-checkout-progress')).toBe(JSON.stringify({
+    version: 1, productId: HEADPHONES_PRODUCT_ID, quantity: 1,
+  }))
+  unmount()
+  const reloaded = makeStore(true)
+  render(<Provider store={reloaded}><App /></Provider>)
+  expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
+  expect(reloaded.getState().checkout.step).toBe('product')
+  expect(screen.queryByRole('dialog', { name: 'Tarjeta y entrega' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Revisa tu compra' })).not.toBeInTheDocument()
 })
 
 test('shows exactly two product accordions with description open and verified details on demand', async () => {
