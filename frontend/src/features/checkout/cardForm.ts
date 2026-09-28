@@ -60,25 +60,29 @@ function passesLuhn(number: string): boolean {
 
 export function validateCardForm(values: CardFormValues, now = new Date()): CardFormErrors {
   const errors: CardFormErrors = {}
-  const digits = values.number.replace(/\D/g, '')
-  if (cardBrand(digits) === 'unknown' || digits.length !== 16 || !passesLuhn(digits)) {
+  const digits = values.number.replace(/[ -]/g, '')
+  if (!/^[\d -]+$/.test(values.number) || cardBrand(digits) === 'unknown' ||
+    digits.length !== 16 || !passesLuhn(digits)) {
     errors.number = 'Ingresa un número válido de Visa o Mastercard.'
   }
   if (!values.cardHolder.trim() || values.cardHolder.trim().length > 120) {
     errors.cardHolder = 'Ingresa el nombre de la tarjeta (máximo 120 caracteres).'
   }
+  const monthIsValid = /^(0[1-9]|1[0-2])$/.test(values.expMonth)
+  const yearIsValid = /^\d{2}$/.test(values.expYear)
   const month = Number(values.expMonth)
   const year = Number(values.expYear)
   const currentYear = now.getFullYear()
-  if (!/^(0[1-9]|1[0-2])$/.test(values.expMonth) || !/^\d{2}$/.test(values.expYear) ||
-    currentYear - (currentYear % 100) + year < currentYear ||
-    (currentYear - (currentYear % 100) + year === currentYear && month < now.getMonth() + 1) ||
-    currentYear - (currentYear % 100) + year > currentYear + 20) {
-    errors.expMonth = 'Ingresa una fecha de vencimiento vigente (MM/AA).'
-  }
+  const fullYear = currentYear - (currentYear % 100) + year
+  if (!monthIsValid) errors.expMonth = 'Ingresa un mes válido entre 01 y 12.'
+  if (!yearIsValid || fullYear < currentYear || fullYear > currentYear + 20)
+    errors.expYear = 'Ingresa un año de vencimiento vigente.'
+  if (monthIsValid && yearIsValid && fullYear === currentYear && month < now.getMonth() + 1)
+    errors.expMonth = 'La tarjeta ya venció. Revisa el mes.'
   if (!/^\d{3}$/.test(values.cvc)) errors.cvc = 'Ingresa los 3 dígitos del código de seguridad.'
   const email = values.customerEmail.trim()
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (email.length > 254 ||
+    !/^[^\s@]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/.test(email)) {
     errors.customerEmail = 'Ingresa un correo electrónico válido.'
   }
   if (!values.recipientName.trim() || values.recipientName.trim().length > 120) {

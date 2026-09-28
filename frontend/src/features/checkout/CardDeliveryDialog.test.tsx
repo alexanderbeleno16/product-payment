@@ -110,6 +110,121 @@ test('validates form, detects brand, masks preview, and never displays the secur
   expect(document.querySelector('.card-preview__code')).not.toHaveTextContent(String(100 + 23))
 })
 
+test('shows associated errors on blur and clears each visited field when corrected', async () => {
+  globalThis.fetch = jest.fn(async () => response(consents))
+  const user = userEvent.setup()
+  mount()
+  await screen.findByRole('link', { name: 'términos de uso' })
+  for (const label of [
+    'Número de tarjeta', 'Nombre en la tarjeta', 'Mes de vencimiento (MM)',
+    'Año de vencimiento (AA)', 'Código de seguridad (CVC)', 'Correo electrónico',
+    'Nombre de quien recibe', 'Dirección de entrega', 'Ciudad',
+  ]) {
+    const field = screen.getByLabelText(label)
+    await user.click(field)
+    await user.tab()
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAttribute('aria-describedby')
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)).toBeVisible()
+  }
+  const month = screen.getByLabelText('Mes de vencimiento (MM)')
+  await user.type(month, '31')
+  expect(month).toHaveValue('31')
+  expect(month).toHaveAttribute('aria-invalid', 'true')
+  const year = screen.getByLabelText('Año de vencimiento (AA)')
+  await user.type(year, '10')
+  expect(year).toHaveValue('10')
+  expect(year).toHaveAttribute('aria-invalid', 'true')
+  await user.clear(month)
+  await user.type(month, '12')
+  await user.clear(year)
+  await user.type(year, '28')
+  expect(month).toHaveAttribute('aria-invalid', 'false')
+  expect(year).toHaveAttribute('aria-invalid', 'false')
+  const email = screen.getByLabelText('Correo electrónico')
+  await user.type(email, 'asdasd@asdasd')
+  expect(email).toHaveAttribute('aria-invalid', 'true')
+  await user.clear(email)
+  await user.type(email, 'persona@example.com')
+  expect(email).toHaveAttribute('aria-invalid', 'false')
+  const number = screen.getByLabelText('Número de tarjeta')
+  await user.type(number, syntheticVisa())
+  expect(number).toHaveAttribute('aria-invalid', 'false')
+  await user.type(screen.getByLabelText('Ciudad'), 'Bogotá')
+  expect(screen.getByLabelText('Ciudad')).toHaveAttribute('aria-invalid', 'false')
+  expect(tokenizationMock).not.toHaveBeenCalled()
+})
+
+test('keeps field length affordances without silently changing invalid values', async () => {
+  globalThis.fetch = jest.fn(async () => response(consents))
+  const user = userEvent.setup()
+  mount()
+  for (const [label, length] of [
+    ['Número de tarjeta', 23], ['Nombre en la tarjeta', 120],
+    ['Mes de vencimiento (MM)', 2], ['Año de vencimiento (AA)', 2],
+    ['Código de seguridad (CVC)', 3], ['Correo electrónico', 254],
+    ['Nombre de quien recibe', 120], ['Dirección de entrega', 240], ['Ciudad', 120],
+  ] as const) {
+    expect(screen.getByLabelText(label)).toHaveAttribute('maxLength', String(length))
+  }
+  const month = screen.getByLabelText('Mes de vencimiento (MM)')
+  await user.type(month, '31')
+  await user.tab()
+  expect(month).toHaveValue('31')
+  expect(month).toHaveAttribute('aria-invalid', 'true')
+})
+
+test('bounds the card number to 16 digits while accepting grouped paste', async () => {
+  globalThis.fetch = jest.fn(async () => response(consents))
+  const user = userEvent.setup()
+  const onPrepared = mount()
+  await screen.findByRole('link', { name: 'términos de uso' })
+  const number = screen.getByLabelText('Número de tarjeta')
+  const card = syntheticVisa()
+  await user.type(number, `${card}9`)
+  expect(number).toHaveValue(card)
+  await user.clear(number)
+  await user.click(number)
+  await user.paste(card.match(/.{4}/g)!.join(' '))
+  expect(number).toHaveValue(card)
+  expect(number).toHaveAttribute('aria-invalid', 'false')
+  await user.clear(number)
+  await user.paste(`${card}9`)
+  expect(number).toHaveValue('')
+  await user.type(number, '4x')
+  await user.tab()
+  expect(number).toHaveValue('4x')
+  expect(number).toHaveAttribute('aria-invalid', 'true')
+  await user.click(screen.getByRole('button', { name: 'Continuar al resumen' }))
+  expect(number).toHaveFocus()
+  expect(tokenizationMock).not.toHaveBeenCalled()
+  expect(onPrepared).not.toHaveBeenCalled()
+})
+
+test('rejects malformed expiry and email at submit without tokenization', async () => {
+  globalThis.fetch = jest.fn(async () => response(consents))
+  const user = userEvent.setup()
+  const onPrepared = mount()
+  await screen.findByRole('link', { name: 'términos de uso' })
+  await completeForm(user)
+  const month = screen.getByLabelText('Mes de vencimiento (MM)')
+  const year = screen.getByLabelText('Año de vencimiento (AA)')
+  const email = screen.getByLabelText('Correo electrónico')
+  await user.clear(month)
+  await user.type(month, '31')
+  await user.clear(year)
+  await user.type(year, '10')
+  await user.clear(email)
+  await user.type(email, 'asdasd@asdasd')
+  await user.click(screen.getByRole('button', { name: 'Continuar al resumen' }))
+  expect(month).toHaveFocus()
+  expect(month).toHaveAttribute('aria-invalid', 'true')
+  expect(year).toHaveAttribute('aria-invalid', 'true')
+  expect(email).toHaveAttribute('aria-invalid', 'true')
+  expect(tokenizationMock).not.toHaveBeenCalled()
+  expect(onPrepared).not.toHaveBeenCalled()
+})
+
 test('keeps native group legends and a live brand beside the card-number label', async () => {
   globalThis.fetch = jest.fn(async () => response(consents))
   const user = userEvent.setup()

@@ -21,7 +21,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   const tokenControllerRef = useRef<AbortController | null>(null)
   const submittingRef = useRef(false)
   const [values, setValues] = useState<CardFormValues>(emptyCardForm)
-  const [errors, setErrors] = useState<CardFormErrors>({})
+  const [visited, setVisited] = useState<Partial<Record<CardFormField, boolean>>>({})
+  const [submitted, setSubmitted] = useState(false)
   const [terms, setTerms] = useState<ConsentTerms | null>(null)
   const [termsStatus, setTermsStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [submitting, setSubmitting] = useState(false)
@@ -29,6 +30,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   const [reverse, setReverse] = useState(false)
   const [termsAttempt, setTermsAttempt] = useState(0)
   const brand = cardBrand(values.number)
+  const errors: CardFormErrors = validateCardForm(values)
+  const errorFor = (field: CardFormField) => submitted || visited[field] ? errors[field] : undefined
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -70,19 +73,24 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   function changeText(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.currentTarget
     const field = name as CardFormField
-    let next = value
-    if (field === 'number') next = value.replace(/\D/g, '').slice(0, 16)
-    if (field === 'expMonth' || field === 'expYear') next = value.replace(/\D/g, '').slice(0, 2)
-    if (field === 'cvc') next = value.replace(/\D/g, '').slice(0, 3)
-    setValues((previous) => ({ ...previous, [field]: next }))
-    setErrors((previous) => ({ ...previous, [field]: undefined }))
+    if (field === 'number') {
+      if (value.replace(/\D/g, '').length > 16) return
+      setValues((previous) => ({ ...previous, number: /^[\d -]*$/.test(value) ? value.replace(/[ -]/g, '') : value }))
+      return
+    }
+    setValues((previous) => ({ ...previous, [field]: value }))
+  }
+
+  function markVisited(event: ChangeEvent<HTMLInputElement>) {
+    const field = event.currentTarget.name as CardFormField
+    setVisited((previous) => ({ ...previous, [field]: true }))
   }
 
   function changeCheck(event: ChangeEvent<HTMLInputElement>) {
     const field = event.currentTarget.name as 'policyAccepted' | 'dataAccepted'
     const checked = event.currentTarget.checked
     setValues((previous) => ({ ...previous, [field]: checked }))
-    setErrors((previous) => ({ ...previous, [field]: undefined }))
+    setVisited((previous) => ({ ...previous, [field]: true }))
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -93,7 +101,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       setMessage('Necesitamos los documentos vigentes para continuar.')
       return
     }
-    setErrors(nextErrors)
+    setSubmitted(true)
     const firstError = Object.keys(nextErrors)[0]
     if (firstError) {
       dialogRef.current?.querySelector<HTMLInputElement>(`[name="${firstError}"]`)?.focus()
@@ -106,7 +114,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
     tokenControllerRef.current = controller
     try {
       const cardToken = await tokenizeCard({
-        number: values.number, cardHolder: values.cardHolder.trim(),
+        number: values.number.replace(/[ -]/g, ''), cardHolder: values.cardHolder.trim(),
         expMonth: values.expMonth, expYear: values.expYear, cvc: values.cvc,
       }, terms.publicKey, controller.signal)
       if (controller.signal.aborted) return
@@ -114,7 +122,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       onPrepared({
         cardToken,
         cardBrand: brand,
-        cardLastFour: values.number.slice(-4),
+        cardLastFour: values.number.replace(/[ -]/g, '').slice(-4),
         acceptsEndUserPolicy: true,
         acceptsPersonalDataAuthorization: true,
         customerEmail: values.customerEmail.trim().toLowerCase(),
@@ -135,16 +143,16 @@ function CardDeliveryDialog({ onPrepared }: Props) {
   }
 
   const input = (name: Exclude<CardFormField, 'policyAccepted' | 'dataAccepted'>,
-    label: string, options: { autoComplete?: string; inputMode?: 'numeric' | 'email' | 'text'; maxLength?: number; type?: string; trailing?: ReactNode } = {}) => (
+    label: string, options: { autoComplete?: string; inputMode?: 'numeric' | 'email' | 'text'; maxLength: number; type?: string; trailing?: ReactNode }) => (
     <div className="card-field">
       <div className="card-field__heading"><label htmlFor={`card-${name}`}>{label}</label>{options.trailing}</div>
       <input id={`card-${name}`} name={name} value={values[name]} onChange={changeText}
         autoComplete={options.autoComplete ?? 'off'} inputMode={options.inputMode}
         maxLength={options.maxLength} type={options.type ?? 'text'}
         onFocus={name === 'cvc' ? () => setReverse(true) : undefined}
-        onBlur={name === 'cvc' ? () => setReverse(false) : undefined}
-        aria-invalid={Boolean(errors[name])} aria-describedby={errors[name] ? `card-${name}-error` : undefined} />
-      {errors[name] && <p className="card-field__error" id={`card-${name}-error`}>{errors[name]}</p>}
+        onBlur={(event) => { markVisited(event); if (name === 'cvc') setReverse(false) }}
+        aria-invalid={Boolean(errorFor(name))} aria-describedby={errorFor(name) ? `card-${name}-error` : undefined} />
+      {errorFor(name) && <p className="card-field__error" id={`card-${name}-error`}>{errorFor(name)}</p>}
     </div>
   )
 
@@ -158,7 +166,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
       <div className="card-dialog__columns">
         <div className="card-dialog__fields">
           <fieldset><legend>Datos de la tarjeta</legend>
-            {input('number', 'Número de tarjeta', { autoComplete: 'cc-number', inputMode: 'numeric', maxLength: 16,
+            {input('number', 'Número de tarjeta', { autoComplete: 'cc-number', inputMode: 'numeric', maxLength: 23,
               trailing: <span className="card-brand" aria-live="polite">{brand === 'visa' ? 'Visa' : brand === 'mastercard' ? 'Mastercard' : 'Visa o Mastercard'}</span> })}
             {input('cardHolder', 'Nombre en la tarjeta', { autoComplete: 'cc-name', maxLength: 120 })}
             <div className="card-dialog__inline">
@@ -191,11 +199,11 @@ function CardDeliveryDialog({ onPrepared }: Props) {
         {termsStatus === 'error' && <div role="alert"><p>No pudimos cargar los documentos vigentes.</p><button type="button" className="secondary-button" onClick={retryTerms}>Reintentar</button></div>}
         {terms && <>
           <label><input name="policyAccepted" type="checkbox" checked={values.policyAccepted} onChange={changeCheck}
-            aria-invalid={Boolean(errors.policyAccepted)} aria-describedby={errors.policyAccepted ? 'card-policy-error' : undefined} /> Acepto los <a href={terms.endUserPolicy.permalink} target="_blank" rel="noopener noreferrer">términos de uso</a>.</label>
-          {errors.policyAccepted && <p className="card-field__error" id="card-policy-error">{errors.policyAccepted}</p>}
+            onBlur={markVisited} aria-invalid={Boolean(errorFor('policyAccepted'))} aria-describedby={errorFor('policyAccepted') ? 'card-policy-error' : undefined} /> Acepto los <a href={terms.endUserPolicy.permalink} target="_blank" rel="noopener noreferrer">términos de uso</a>.</label>
+          {errorFor('policyAccepted') && <p className="card-field__error" id="card-policy-error">{errorFor('policyAccepted')}</p>}
           <label><input name="dataAccepted" type="checkbox" checked={values.dataAccepted} onChange={changeCheck}
-            aria-invalid={Boolean(errors.dataAccepted)} aria-describedby={errors.dataAccepted ? 'card-data-error' : undefined} /> Autorizo el <a href={terms.personalDataAuthorization.permalink} target="_blank" rel="noopener noreferrer">tratamiento de datos personales</a>.</label>
-          {errors.dataAccepted && <p className="card-field__error" id="card-data-error">{errors.dataAccepted}</p>}
+            onBlur={markVisited} aria-invalid={Boolean(errorFor('dataAccepted'))} aria-describedby={errorFor('dataAccepted') ? 'card-data-error' : undefined} /> Autorizo el <a href={terms.personalDataAuthorization.permalink} target="_blank" rel="noopener noreferrer">tratamiento de datos personales</a>.</label>
+          {errorFor('dataAccepted') && <p className="card-field__error" id="card-data-error">{errorFor('dataAccepted')}</p>}
         </>}
       </fieldset>
       {message && <p className="card-dialog__message" role="status">{message}</p>}

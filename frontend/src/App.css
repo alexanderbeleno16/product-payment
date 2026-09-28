@@ -335,13 +335,13 @@
   display: flex;
   font-size: 0.72rem;
   gap: 0.25rem;
-  justify-content: space-between;
+  justify-content: flex-start;
   min-width: 0;
 }
 .catalog-card__stock-value {
   color: #153b91;
   font-weight: 800;
-  text-align: right;
+  text-align: left;
 }
 .catalog-card__stock-value--empty {
   color: #a92c38;
