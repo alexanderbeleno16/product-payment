@@ -4,7 +4,7 @@ import { ApiError, getProduct, getProducts, getQuote } from '../../api/checkoutA
 import type { CheckoutQuote, Product } from '../../api/checkoutApi'
 
 type RequestStatus = 'idle' | 'loading' | 'ready' | 'error'
-type CheckoutStep = 'catalog' | 'product' | 'card'
+type CheckoutStep = 'catalog' | 'product' | 'card' | 'summary'
 
 interface CheckoutState {
   step: CheckoutStep
@@ -105,6 +105,11 @@ const checkoutSlice = createSlice({
   name: 'checkout',
   initialState,
   reducers: {
+    progressRestored(state, action: PayloadAction<{ productId: string; quantity: number }>) {
+      state.step = 'product'
+      state.productId = action.payload.productId
+      state.quantity = action.payload.quantity
+    },
     productSelected(state, action: PayloadAction<string>) {
       if (!state.catalog.some((product) => product.id === action.payload)) return
       state.step = 'product'
@@ -158,6 +163,12 @@ const checkoutSlice = createSlice({
     },
     productReturnRequested(state) {
       state.step = 'product'
+    },
+    summaryEntered(state) {
+      if (state.step !== 'card' || state.quoteStatus !== 'ready' ||
+        state.quote?.productId !== state.productId ||
+        state.quote.quantity !== state.quantity) return
+      state.step = 'summary'
     },
   },
   extraReducers(builder) {
@@ -266,10 +277,12 @@ const checkoutSlice = createSlice({
 })
 
 export const {
+  progressRestored,
   productSelected,
   catalogReturnRequested,
   quantityChanged,
   cardEntryRequested,
   productReturnRequested,
+  summaryEntered,
 } = checkoutSlice.actions
 export default checkoutSlice.reducer
