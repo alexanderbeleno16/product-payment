@@ -1,0 +1,23 @@
+.payment-status-main { padding-block: 2rem 4rem; max-width: 52rem; }
+.payment-status-main > h1 { font-size: clamp(1.7rem, 5vw, 2.4rem); margin: 0 0 1.25rem; }
+.payment-status-product { align-items: center; background: #fff; border: 1px solid #dfe7f2; border-radius: 1.35rem; display: flex; gap: 1rem; min-width: 0; padding: 0.85rem; margin-bottom: 1rem; }
+.payment-status-product img { aspect-ratio: 1; border-radius: 0.8rem; object-fit: cover; width: 4.5rem; }
+.payment-status-product > div { display: grid; gap: 0.2rem; min-width: 0; }
+.payment-status-product > div span { color: #526482; font-size: 0.9rem; }
+.payment-status-product__total { color: #1551d4; margin-left: auto; text-align: right; }
+.payment-status-card { background: #fff; border: 1px solid #dfe7f2; border-radius: 1.5rem; box-shadow: 0 2px 5px rgb(15 23 42 / 4%); min-width: 0; padding: clamp(1.5rem, 5vw, 2.5rem); text-align: center; }
+.payment-status-icon { align-items: center; background: #dfe8ff; border: 0.8rem solid #ecf1ff; border-radius: 50%; color: #1551d4; display: inline-flex; font-size: 2.6rem; font-weight: 700; height: 6.5rem; justify-content: center; margin-bottom: 1rem; width: 6.5rem; }
+.payment-status-card--approved .payment-status-icon { background: #9cddc9; border-color: #dff9ed; color: #087b58; }
+.payment-status-card--failed .payment-status-icon, .payment-status-card--attention .payment-status-icon { background: #ffd6d6; border-color: #fff0f0; color: #ab2e36; }
+.payment-status-pill { background: #e5edff; border-radius: 99rem; color: #164bbb; display: table; font-weight: 700; margin: 0 auto 0.85rem; padding: 0.35rem 0.85rem; }
+.payment-status-card--approved .payment-status-pill { background: #ddf9ea; color: #086847; }
+.payment-status-card--failed .payment-status-pill, .payment-status-card--attention .payment-status-pill { background: #fff0f0; color: #9d2937; }
+.payment-status-card h2 { color: #0f172a; font-size: clamp(1.5rem, 4vw, 2rem); margin: 0; }
+.payment-status-message { color: #526482; line-height: 1.55; margin: 1rem auto 0; max-width: 35rem; }
+.payment-status-message p { margin: 0; }
+.payment-status-reference { background: #f0f4fa; border-radius: 1rem; display: grid; gap: 0.4rem; margin: 1.5rem 0 0; padding: 1rem; text-align: left; }
+.payment-status-reference span { color: #526482; font-size: 0.9rem; }
+.payment-status-reference strong { color: #123c91; overflow-wrap: anywhere; }
+.payment-status-actions { display: grid; gap: 0.75rem; margin-top: 1.25rem; }
+.payment-status-actions button { min-height: 3.25rem; width: 100%; }
+@media (max-width: 26rem) { .payment-status-product { flex-wrap: wrap; } .payment-status-product__total { width: 100%; } }

@@ -141,6 +141,13 @@ test('maps bridge failure safely and does not post after abort', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(2)
 })
 
+test('distinguishes upstream card rejection from service unavailability', async () => {
+  const fetchMock = jest.mocked(fetch)
+  fetchMock.mockResolvedValueOnce(response({ publicKey: pem }))
+  fetchMock.mockResolvedValueOnce(response({ diagnostic: card.number }, 422))
+  await expect(tokenizeCard(card, key, signal)).rejects.toEqual(new TokenizationError('invalid_card'))
+})
+
 test.each(['key', 'token'] as const)(
   'times out while the %s response body is stalled after headers',
   async (stage) => {

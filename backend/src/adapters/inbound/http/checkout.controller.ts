@@ -74,6 +74,8 @@ function rejectCheckout(reason: CheckoutFailure): never {
       throw new ConflictException(
         'Idempotency key conflicts with the original checkout',
       );
+    case 'QUOTE_CHANGED':
+      throw new ConflictException('QUOTE_CHANGED');
     case 'UNSUPPORTED_CURRENCY':
       throw new UnprocessableEntityException(
         'Product currency is not supported',
@@ -181,7 +183,8 @@ export class CheckoutController {
   @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiResponse({
     status: 409,
-    description: 'Insufficient stock or conflicting idempotency key',
+    description:
+      'Insufficient stock, changed quoted total, or conflicting idempotency key',
   })
   @ApiResponse({ status: 422, description: 'Unsupported product currency' })
   async create(
@@ -192,6 +195,7 @@ export class CheckoutController {
       idempotencyKey,
       productId: body.productId,
       quantity: body.quantity,
+      expectedTotalCents: body.expectedTotalCents,
       installments: body.installments,
       customerEmail: body.customerEmail,
       delivery: {

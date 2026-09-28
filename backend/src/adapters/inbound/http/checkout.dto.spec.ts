@@ -9,6 +9,7 @@ const productId = '8a52ea31-08d9-4f52-a604-00e56143dce0';
 const validBody = {
   productId,
   quantity: 2,
+  expectedTotalCents: 2_700_000,
   installments: 3,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -59,6 +60,12 @@ describe('Checkout transport DTOs', () => {
     [{ ...validBody, acceptsEndUserPolicy: 'true' }],
     [{ ...validBody, installments: 0 }],
     [{ ...validBody, installments: 1.5 }],
+    [{ ...validBody, expectedTotalCents: undefined }],
+    [{ ...validBody, expectedTotalCents: 0 }],
+    [{ ...validBody, expectedTotalCents: -1 }],
+    [{ ...validBody, expectedTotalCents: 1.5 }],
+    [{ ...validBody, expectedTotalCents: '2700000' }],
+    [{ ...validBody, expectedTotalCents: Number.MAX_SAFE_INTEGER + 1 }],
   ])(
     'rejects malformed, unknown, or unaccepted checkout data: %j',
     async (input) => {

@@ -61,6 +61,18 @@ export class CreateCheckoutDto {
   @Min(1)
   quantity!: number;
 
+  @ApiProperty({
+    type: Number,
+    minimum: 1,
+    maximum: Number.MAX_SAFE_INTEGER,
+    description:
+      'Total from the last server quote; checked again before payment',
+  })
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedTotalCents!: number;
+
   @ApiProperty({ type: Number, minimum: 1, maximum: Number.MAX_SAFE_INTEGER })
   @IsInt()
   @Min(1)

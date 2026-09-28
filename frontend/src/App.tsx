@@ -1,23 +1,43 @@
 import { useState } from 'react'
-import { useAppDispatch, useAppSelector } from './app/hooks'
+import { useAppDispatch, useAppSelector, useAppStore } from './app/hooks'
+import { submitPayment } from './app/paymentFlow'
+import type { CheckoutQuote } from './api/checkoutApi'
 import CatalogScreen from './features/checkout/CatalogScreen'
 import ProductScreen from './features/checkout/ProductScreen'
 import CardDeliveryDialog from './features/checkout/CardDeliveryDialog'
 import SummaryScreen from './features/checkout/SummaryScreen'
+import PaymentStatusScreen from './features/checkout/PaymentStatusScreen'
 import type { TokenizedCardDelivery } from './features/checkout/cardForm'
 import { summaryEntered } from './features/checkout/checkoutSlice'
 import './App.css'
 
 export default function App() {
   const dispatch = useAppDispatch()
+  const store = useAppStore()
   const step = useAppSelector((state) => state.checkout.step)
+  const quoteReady = useAppSelector((state) => state.checkout.quoteStatus === 'ready')
+  const paymentPhase = useAppSelector((state) => state.payment.phase)
   const [prepared, setPrepared] = useState<TokenizedCardDelivery | null>(null)
-  if (step === 'summary' && prepared) return <SummaryScreen prepared={prepared} onLeave={() => setPrepared(null)} />
+  const [retokenizing, setRetokenizing] = useState(false)
+  if (paymentPhase !== 'idle') return <PaymentStatusScreen />
+  if (step === 'summary') return <>
+    <SummaryScreen prepared={prepared} onLeave={() => { setPrepared(null); setRetokenizing(false) }}
+      onRetokenize={() => setRetokenizing(true)}
+    onConfirm={(quote: CheckoutQuote) => {
+      if (!prepared) return
+      void submitPayment(prepared, quote, dispatch, store.getState)
+      setPrepared(null)
+    }} />
+    {retokenizing && <CardDeliveryDialog onClose={() => setRetokenizing(false)} onPrepared={(handoff) => {
+      setPrepared(handoff)
+      setRetokenizing(false)
+    }} />}
+  </>
   if (step === 'catalog') return <CatalogScreen />
   return (
     <>
       <ProductScreen />
-      {step === 'card' && <CardDeliveryDialog onPrepared={(handoff) => {
+      {step === 'card' && quoteReady && <CardDeliveryDialog onPrepared={(handoff) => {
         setPrepared(handoff)
         dispatch(summaryEntered())
       }} />}
