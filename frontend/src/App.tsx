@@ -15,6 +15,7 @@ export default function App() {
   const dispatch = useAppDispatch()
   const store = useAppStore()
   const step = useAppSelector((state) => state.checkout.step)
+  const quoteReady = useAppSelector((state) => state.checkout.quoteStatus === 'ready')
   const paymentPhase = useAppSelector((state) => state.payment.phase)
   const [prepared, setPrepared] = useState<TokenizedCardDelivery | null>(null)
   if (paymentPhase !== 'idle') return <PaymentStatusScreen />
@@ -27,7 +28,7 @@ export default function App() {
   return (
     <>
       <ProductScreen />
-      {step === 'card' && <CardDeliveryDialog onPrepared={(handoff) => {
+      {step === 'card' && quoteReady && <CardDeliveryDialog onPrepared={(handoff) => {
         setPrepared(handoff)
         dispatch(summaryEntered())
       }} />}

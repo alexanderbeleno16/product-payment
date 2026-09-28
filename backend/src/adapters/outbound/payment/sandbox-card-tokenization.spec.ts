@@ -147,3 +147,20 @@ test('rejects remote failures and malformed responses without relaying bodies', 
     new CardTokenizationUnavailable(),
   );
 });
+
+test('classifies provider validation and transport failures without retaining response bodies', async () => {
+  const transport = jest.fn<typeof fetch>()
+    .mockResolvedValueOnce(response({ card: 'private-fixture' }, 422))
+    .mockResolvedValueOnce(response({ diagnostic: 'private-fixture' }, 401))
+    .mockRejectedValueOnce(new Error('private-fixture'));
+  const adapter = new SandboxCardTokenization(config, transport);
+  await expect(adapter.tokenize(jwe)).rejects.toEqual(
+    new CardTokenizationUnavailable('token', 'upstream_validation', 422),
+  );
+  await expect(adapter.tokenize(jwe)).rejects.toEqual(
+    new CardTokenizationUnavailable('token', 'upstream_status', 401),
+  );
+  await expect(adapter.tokenize(jwe)).rejects.toEqual(
+    new CardTokenizationUnavailable('token', 'transport'),
+  );
+});
