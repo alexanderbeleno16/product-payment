@@ -21,6 +21,7 @@ const input: CheckoutInput = {
   idempotencyKey: key,
   productId,
   quantity: 2,
+  expectedTotalCents: 26_680_000,
   installments: 1,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -195,6 +196,38 @@ describe('checkout application', () => {
     expect(createPending).not.toHaveBeenCalled();
   });
 
+  it('rejects a changed server quote before persisting or submitting payment', async () => {
+    const result = await new StartCheckout(reader, store).execute({
+      ...input,
+      expectedTotalCents: input.expectedTotalCents - 1,
+    });
+    expect(result).toEqual({ ok: false, reason: 'QUOTE_CHANGED' });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+  });
+
+  it('replays the original total after catalog price changes but rejects a changed expectation', async () => {
+    const useCase = new StartCheckout(reader, store);
+    const first = await useCase.execute(input);
+    if (!first.ok) throw new Error('Expected pending checkout');
+    findByIdempotencyKey.mockResolvedValue(first.value);
+    findById.mockClear();
+    findById.mockResolvedValue({
+      ...product,
+      priceCents: product.priceCents + 1,
+    });
+
+    expect(await useCase.execute(input)).toEqual(first);
+    expect(
+      await useCase.execute({
+        ...input,
+        expectedTotalCents: input.expectedTotalCents + 1,
+      }),
+    ).toEqual({ ok: false, reason: 'IDEMPOTENCY_CONFLICT' });
+    expect(findById).not.toHaveBeenCalled();
+    expect(createPending).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects same key with changed delivery, quantity, or installments', async () => {
     const useCase = new StartCheckout(reader, store);
     const first = await useCase.execute(input);
@@ -250,6 +283,10 @@ describe('checkout application', () => {
       { ...input, idempotencyKey: null },
       { ...input, productId: 42 },
       { ...input, quantity: '2' },
+      { ...input, expectedTotalCents: undefined },
+      { ...input, expectedTotalCents: 0 },
+      { ...input, expectedTotalCents: Number.MAX_SAFE_INTEGER + 1 },
+      { ...input, expectedTotalCents: '26700000' },
       { ...input, installments: undefined },
       { ...input, customerEmail: {} },
       { ...input, delivery: null },

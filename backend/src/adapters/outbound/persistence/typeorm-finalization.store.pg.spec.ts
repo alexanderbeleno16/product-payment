@@ -34,6 +34,7 @@ const productId = '9bf29f21-5931-45a9-a3fc-67a9728787b3';
         idempotencyKey: randomUUID(),
         productId,
         quantity,
+        expectedTotalCents: quantity * 10_000_000 + 700_000,
         installments: 1,
         customerEmail: 'buyer@example.com',
         delivery: {

@@ -20,6 +20,9 @@ import { DatabaseConnection } from './adapters/outbound/persistence/database-con
 import { DatabaseModule } from './adapters/outbound/persistence/database.module';
 import { TypeOrmCheckoutStore } from './adapters/outbound/persistence/typeorm-checkout.store';
 import { TypeOrmFinalizationStore } from './adapters/outbound/persistence/typeorm-finalization.store';
+import { TypeOrmPendingReconciliationQueue } from './adapters/outbound/persistence/typeorm-pending-reconciliation.queue';
+import { ReconcilePendingPayments } from './application/reconcile-pending-payments';
+import { PendingReconciliationWorker } from './adapters/inbound/jobs/pending-reconciliation.worker';
 import { SandboxConsentTermsReader } from './adapters/outbound/payment/sandbox-consent-terms.reader';
 import { SandboxCardTokenization } from './adapters/outbound/payment/sandbox-card-tokenization';
 import { SandboxPaymentGateway } from './adapters/outbound/payment/sandbox-payment.gateway';
@@ -49,6 +52,19 @@ function requiredPaymentEnv(name: string): string {
   ],
   providers: [
     TokenizationRateLimitGuard,
+    PendingReconciliationWorker,
+    {
+      provide: ReconcilePendingPayments,
+      useFactory: (
+        connection: DatabaseConnection,
+        reconcile: ReconcileKnownPayment,
+      ): ReconcilePendingPayments =>
+        new ReconcilePendingPayments(
+          new TypeOrmPendingReconciliationQueue(connection),
+          reconcile,
+        ),
+      inject: [DatabaseConnection, ReconcileKnownPayment],
+    },
     {
       provide: SandboxCardTokenization,
       useFactory: (): SandboxCardTokenization =>

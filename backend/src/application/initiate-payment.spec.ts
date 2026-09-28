@@ -12,6 +12,7 @@ const input: CheckoutInput = {
   idempotencyKey: 'cf2cdd86-05ea-4c7c-adeb-812927f37873',
   productId: '8a52ea31-08d9-4f52-a604-00e56143dce0',
   quantity: 1,
+  expectedTotalCents: 1_700_000,
   installments: 2,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -159,6 +160,23 @@ describe('InitiatePayment', () => {
     expect(createPending).not.toHaveBeenCalled();
     expect(claimSubmission).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale confirmed amount without a transaction, charge, stock, or delivery effect', async () => {
+    expect(
+      await initiate.execute(
+        {
+          ...input,
+          expectedTotalCents: input.expectedTotalCents - 1,
+        },
+        credentials,
+        consent,
+      ),
+    ).toEqual({ ok: false, reason: 'QUOTE_CHANGED' });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    expect(saved).toBeNull();
   });
 
   it('returns the current transaction without submitting after losing the claim', async () => {

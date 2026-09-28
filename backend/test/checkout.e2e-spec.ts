@@ -33,6 +33,7 @@ const product = {
 const body = {
   productId,
   quantity: 1,
+  expectedTotalCents: 1_700_000,
   installments: 2,
   customerEmail: 'buyer@example.com',
   delivery: {
@@ -53,6 +54,7 @@ describe('Checkout HTTP contract (e2e)', () => {
   let claimed: boolean;
   const findById = jest.fn();
   const submit = jest.fn();
+  const getPaymentById = jest.fn();
   const getCurrent = jest.fn();
   const createPending = jest.fn();
   const claimSubmission = jest.fn();
@@ -133,7 +135,7 @@ describe('Checkout HTTP contract (e2e)', () => {
       .overrideProvider(CONSENT_TERMS_READER)
       .useValue({ getCurrent })
       .overrideProvider(PAYMENT_STATUS_READER)
-      .useValue({ getById: jest.fn() })
+      .useValue({ getById: getPaymentById })
       .overrideProvider(PaymentEventVerifier)
       .useValue(new PaymentEventVerifier('test_events_fixture_only'))
       .overrideProvider(SandboxCardTokenization)
@@ -165,6 +167,7 @@ describe('Checkout HTTP contract (e2e)', () => {
         '/checkout/quote',
         '/checkout/consents',
         '/checkouts',
+        '/checkouts/status',
         '/transactions/{reference}',
       ]),
     );
@@ -214,6 +217,7 @@ describe('Checkout HTTP contract (e2e)', () => {
     expect(schemas.CreateCheckoutDto.required).toEqual(
       expect.arrayContaining([
         'installments',
+        'expectedTotalCents',
         'delivery',
         'cardToken',
         'acceptanceToken',
@@ -236,6 +240,32 @@ describe('Checkout HTTP contract (e2e)', () => {
         .enum,
     ).toEqual([true]);
     expect(schemas.CreateCheckoutDto.properties.installments.minimum).toBe(1);
+    expect(
+      schemas.CreateCheckoutDto.properties.expectedTotalCents.minimum,
+    ).toBe(1);
+    expect(
+      schemas.CreateCheckoutDto.properties.expectedTotalCents.maximum,
+    ).toBe(Number.MAX_SAFE_INTEGER);
+    expect(document.paths['/checkouts/status'].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Idempotency-Key',
+          in: 'header',
+          required: true,
+        }),
+      ]),
+    );
+    expect(
+      document.paths['/checkouts/status'].get.responses['200'].content[
+        'application/json'
+      ].schema.$ref,
+    ).toBe('#/components/schemas/TransactionStatusResponseDto');
+    expect(document.paths['/checkouts/status'].get.responses).toHaveProperty(
+      '400',
+    );
+    expect(document.paths['/checkouts/status'].get.responses).toHaveProperty(
+      '404',
+    );
     expect(document.paths['/transactions/{reference}'].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -327,6 +357,11 @@ describe('Checkout HTTP contract (e2e)', () => {
       { ...body, installments: 0 },
       { ...body, installments: 1.5 },
       { ...body, installments: Number.MAX_SAFE_INTEGER + 1 },
+      { ...body, expectedTotalCents: undefined },
+      { ...body, expectedTotalCents: '1700000' },
+      { ...body, expectedTotalCents: 0 },
+      { ...body, expectedTotalCents: 1.5 },
+      { ...body, expectedTotalCents: Number.MAX_SAFE_INTEGER + 1 },
     ]) {
       await request(app.getHttpServer())
         .post('/checkouts')
@@ -352,6 +387,25 @@ describe('Checkout HTTP contract (e2e)', () => {
       .send(body)
       .expect(409);
     expect(createPending).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('rejects a changed quote before creating a transaction or touching payment', async () => {
+    findById.mockResolvedValueOnce({
+      ...product,
+      priceCents: product.priceCents + 1,
+    });
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body)
+      .expect(409)
+      .expect(({ body: response }) => {
+        expect(response.message).toBe('QUOTE_CHANGED');
+      });
+    expect(saved).toBeNull();
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -453,6 +507,23 @@ describe('Checkout HTTP contract (e2e)', () => {
       .set('Idempotency-Key', idempotencyKey)
       .send({ ...body, installments: 3 })
       .expect(409);
+    findById.mockClear();
+    findById.mockResolvedValue({
+      ...product,
+      priceCents: product.priceCents + 1,
+    });
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body)
+      .expect(201)
+      .expect(first.body);
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send({ ...body, expectedTotalCents: body.expectedTotalCents + 1 })
+      .expect(409);
+    expect(findById).not.toHaveBeenCalled();
     expect(createPending).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenCalledTimes(1);
     expect(submit.mock.calls[0][0]).toMatchObject({ installments: 2 });
@@ -499,5 +570,77 @@ describe('Checkout HTTP contract (e2e)', () => {
         paymentStatus: 'APPROVED',
         fulfillmentStatus: 'STOCK_UNAVAILABLE',
       });
+  });
+
+  it('recovers status by the original key when the POST response was lost without new effects', async () => {
+    await request(app.getHttpServer())
+      .post('/checkouts')
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body)
+      .expect(201);
+    const original = saved!;
+    const originalSubmitCount = submit.mock.calls.length;
+    const originalCreateCount = createPending.mock.calls.length;
+    const originalClaimCount = claimSubmission.mock.calls.length;
+
+    const first = await request(app.getHttpServer())
+      .get('/checkouts/status')
+      .set('Idempotency-Key', idempotencyKey)
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+    expect(first.body).toEqual({
+      reference: original.reference,
+      paymentStatus: 'PENDING',
+      fulfillmentStatus: 'NOT_STARTED',
+    });
+    expect(JSON.stringify(first.body)).not.toMatch(
+      /customerEmail|delivery|cardToken|providerTransactionId|idempotencyKey/,
+    );
+
+    saved = {
+      ...original,
+      status: 'APPROVED',
+      fulfillmentStatus: 'STOCK_UNAVAILABLE',
+    };
+    await request(app.getHttpServer())
+      .get('/checkouts/status')
+      .set('Idempotency-Key', idempotencyKey)
+      .expect(200)
+      .expect({
+        reference: original.reference,
+        paymentStatus: 'APPROVED',
+        fulfillmentStatus: 'STOCK_UNAVAILABLE',
+      });
+    expect(submit).toHaveBeenCalledTimes(originalSubmitCount);
+    expect(createPending).toHaveBeenCalledTimes(originalCreateCount);
+    expect(claimSubmission).toHaveBeenCalledTimes(originalClaimCount);
+    expect(recordSubmissionOutcome).toHaveBeenCalledTimes(1);
+    expect(getPaymentById).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing, malformed, and unknown recovery keys without effects', async () => {
+    await request(app.getHttpServer()).get('/checkouts/status').expect(400);
+    for (const invalidKey of [
+      'not-a-uuid',
+      '00000000-0000-4000-8000-000000000000,other',
+    ]) {
+      await request(app.getHttpServer())
+        .get('/checkouts/status')
+        .set('Idempotency-Key', invalidKey)
+        .expect(400);
+    }
+    await request(app.getHttpServer())
+      .get('/checkouts/status')
+      .set('Idempotency-Key', '124a6032-2b21-4dbb-ab90-f4d338b7631d')
+      .expect(404)
+      .expect(({ body: response }) => {
+        expect(response.message).toBe('Transaction not found');
+      });
+    expect(findByIdempotencyKey).toHaveBeenCalledTimes(1);
+    expect(submit).not.toHaveBeenCalled();
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+    expect(recordSubmissionOutcome).not.toHaveBeenCalled();
+    expect(getPaymentById).not.toHaveBeenCalled();
   });
 });

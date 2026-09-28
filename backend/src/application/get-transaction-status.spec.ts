@@ -74,4 +74,31 @@ describe('GetTransactionStatus', () => {
     await useCase.execute(reference, ` ${idempotencyKey.toUpperCase()} `);
     expect(findByIdempotencyKey).toHaveBeenCalledWith(idempotencyKey);
   });
+
+  it('recovers only public status from the original key without a reference or side effects', async () => {
+    await expect(
+      useCase.recoverByIdempotencyKey(idempotencyKey.toUpperCase()),
+    ).resolves.toEqual({
+      ok: true,
+      value: {
+        reference,
+        paymentStatus: 'SUBMISSION_UNKNOWN',
+        fulfillmentStatus: 'NOT_STARTED',
+      },
+    });
+    expect(findByIdempotencyKey).toHaveBeenCalledWith(idempotencyKey);
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+    expect(recordSubmissionOutcome).not.toHaveBeenCalled();
+  });
+
+  it('does not disclose a checkout for an unknown key', async () => {
+    findByIdempotencyKey.mockResolvedValueOnce(null);
+    await expect(
+      useCase.recoverByIdempotencyKey('unknown-key'),
+    ).resolves.toEqual({ ok: false, reason: 'NOT_FOUND' });
+    expect(createPending).not.toHaveBeenCalled();
+    expect(claimSubmission).not.toHaveBeenCalled();
+    expect(recordSubmissionOutcome).not.toHaveBeenCalled();
+  });
 });
