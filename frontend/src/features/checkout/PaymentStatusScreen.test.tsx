@@ -1,7 +1,7 @@
 import { Provider } from 'react-redux'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { makeStore } from '../../app/store'
-import { paymentRestored, paymentStatusReceived, paymentStatusRequested, paymentStatusUnavailable } from './paymentSlice'
+import { paymentRestored, paymentStatusReceived, paymentStatusRequested, paymentStatusUnavailable, paymentStorageFailed } from './paymentSlice'
 import PaymentStatusScreen from './PaymentStatusScreen'
 
 jest.mock('../../app/paymentFlow', () => ({ reconcilePayment: jest.fn() }))
@@ -78,4 +78,24 @@ test('keeps pending, unknown, and approved-but-unfulfilled messages coherent', (
   expect(screen.getByText('Pago aprobado · Entrega en proceso')).toBeVisible()
   expect(screen.getByText('Pago aprobado. La entrega aún no está confirmada.')).toBeVisible()
   view.unmount()
+})
+
+test('shows storage failures as attention, never as a pending payment', () => {
+  const store = makeStore()
+  store.dispatch(paymentStorageFailed())
+  const view = render(<Provider store={store}><PaymentStatusScreen /></Provider>)
+  const card = screen.getByRole('region', { name: 'No se pudo continuar' })
+  expect(card).toHaveClass('payment-status-card--attention')
+  expect(card).not.toHaveClass('payment-status-card--pending')
+  expect(card).toHaveTextContent('Pago no enviado')
+  expect(card).toHaveTextContent('No enviamos el pago.')
+  expect(card.querySelector('.payment-status-icon')).toHaveTextContent('!')
+  view.unmount()
+
+  sessionStorage.setItem('shopifast-payment-recovery', 'unreadable')
+  const second = render(<Provider store={store}><PaymentStatusScreen /></Provider>)
+  expect(screen.getByText('Pago sin verificar')).toBeVisible()
+  expect(screen.getByText(/Existe una solicitud previa/)).toBeVisible()
+  second.unmount()
+  sessionStorage.clear()
 })
