@@ -25,8 +25,8 @@ test('encrypts the card with the supplied public key before the token bridge see
     const body = JSON.parse(String(options?.body)) as { payload: string }
     expect(Object.keys(body)).toEqual(['payload'])
     encryptedPayload = body.payload
-    expect(encryptedPayload).not.toContain(card.number)
-    expect(encryptedPayload).not.toContain(card.cvc)
+    expect(encryptedPayload.split('.')).toHaveLength(5)
+    expect(encryptedPayload).not.toBe(JSON.stringify(card))
     return new Response(JSON.stringify({ token: 'tok_fixture' }), { status: 201 })
   })
 

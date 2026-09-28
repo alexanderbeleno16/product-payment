@@ -30,3 +30,19 @@ test('rejects contact progress for another product or unexpected stored fields',
   }))
   expect(readContactProgress(HEADPHONES_PRODUCT_ID)).toBeNull()
 })
+
+test('bounds every saved contact field and never writes for an invalid product id', () => {
+  writeContactProgress(HEADPHONES_PRODUCT_ID, {
+    customerEmail: 'e'.repeat(300), recipientName: 'n'.repeat(300),
+    addressLine: 'a'.repeat(300), city: 'c'.repeat(300),
+  })
+  expect(readContactProgress(HEADPHONES_PRODUCT_ID)).toEqual({
+    customerEmail: 'e'.repeat(254), recipientName: 'n'.repeat(120),
+    addressLine: 'a'.repeat(240), city: 'c'.repeat(120),
+  })
+  const saved = sessionStorage.getItem('shopifast-contact-progress')
+  writeContactProgress('not-a-product-id', {
+    customerEmail: 'other@example.test', recipientName: 'Other', addressLine: 'Other', city: 'Other',
+  })
+  expect(sessionStorage.getItem('shopifast-contact-progress')).toBe(saved)
+})
