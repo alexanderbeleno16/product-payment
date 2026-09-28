@@ -74,6 +74,8 @@ test('opens a modal, loads separate unchecked consent links, and closes on Escap
   expect(await screen.findByRole('link', { name: 'términos de uso' })).toHaveAttribute('href', consents.endUserPolicy.permalink)
   expect(screen.getByRole('link', { name: 'tratamiento de datos personales' })).toHaveAttribute('href', consents.personalDataAuthorization.permalink)
   expect(screen.getAllByRole('checkbox').every((control) => !(control as HTMLInputElement).checked)).toBe(true)
+  const authorizations = screen.getByRole('group', { name: 'Autorizaciones' })
+  expect(authorizations.nextElementSibling).toHaveClass('card-dialog__actions')
   expect(fetchMock).toHaveBeenCalledWith('/checkout/consents', expect.objectContaining({ cache: 'no-store' }))
   const dialog = screen.getByRole('dialog')
   dialog.dispatchEvent(new Event('cancel', { bubbles: false, cancelable: true }))

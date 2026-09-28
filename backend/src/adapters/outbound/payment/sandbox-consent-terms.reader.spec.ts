@@ -1,4 +1,5 @@
 import { SandboxConsentTermsReader } from './sandbox-consent-terms.reader';
+import { ConsentTermsUnavailable } from '../../../application/consent-terms.port';
 
 const config = {
   apiBaseUrl: 'https://sandbox.example.test/v1',
@@ -124,12 +125,14 @@ describe('SandboxConsentTermsReader', () => {
 
   it('does not expose remote body or transport errors on auth, timeout, redirect, and malformed JSON', async () => {
     transport.mockResolvedValueOnce(reply({ secret: 'remote-secret' }, 401));
-    await expect(reader.getCurrent()).rejects.toThrow('Consent terms are temporarily unavailable');
+    await expect(reader.getCurrent()).rejects.toEqual(new ConsentTermsUnavailable('auth'));
     transport.mockRejectedValueOnce(new Error('private transport detail'));
-    await expect(reader.getCurrent()).rejects.toThrow('Consent terms are temporarily unavailable');
-    transport.mockRejectedValueOnce(new Error('redirect blocked'));
-    await expect(reader.getCurrent()).rejects.toThrow('Consent terms are temporarily unavailable');
+    await expect(reader.getCurrent()).rejects.toEqual(new ConsentTermsUnavailable('network'));
+    transport.mockRejectedValueOnce(Object.assign(new Error('private timeout detail'), { name: 'TimeoutError' }));
+    await expect(reader.getCurrent()).rejects.toEqual(new ConsentTermsUnavailable('timeout'));
     transport.mockResolvedValueOnce(new Response('not-json', { status: 200 }));
-    await expect(reader.getCurrent()).rejects.toThrow('Consent terms are temporarily unavailable');
+    await expect(reader.getCurrent()).rejects.toEqual(new ConsentTermsUnavailable('invalid_response'));
+    transport.mockResolvedValueOnce(reply({ secret: 'remote-secret' }, 503));
+    await expect(reader.getCurrent()).rejects.toEqual(new ConsentTermsUnavailable('network'));
   });
 });

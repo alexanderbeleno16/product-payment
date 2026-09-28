@@ -1,5 +1,5 @@
 import { CompactEncrypt, importSPKI } from 'jose'
-import { paymentApiBaseUrl } from './paymentApiBaseUrl'
+import { paymentApiBaseUrl, paymentSandboxHost } from './paymentApiBaseUrl'
 
 export interface CardDetails {
   number: string
@@ -21,14 +21,18 @@ export class TokenizationError extends Error {
   }
 }
 
-function providerUrl(baseUrl: string, path: string): string {
+function providerUrl(baseUrl: string, path: string, expectedHost: string, publicKey: string): string {
   let url: URL
   try {
     url = new URL(baseUrl)
   } catch {
     throw new TokenizationError('configuration')
   }
-  if (url.protocol !== 'https:' || url.username || url.password ||
+  const officialSandbox = url.hostname.startsWith('sandbox.') && publicKey.startsWith('pub_test_')
+  const uatSandbox = url.hostname.startsWith('api-sandbox.') && publicKey.startsWith('pub_stagtest_')
+  if (!expectedHost || url.hostname !== expectedHost || url.port ||
+    (!officialSandbox && !uatSandbox) ||
+    url.protocol !== 'https:' || url.username || url.password ||
     url.search || url.hash || !['', '/v1', '/v1/'].includes(url.pathname)) {
     throw new TokenizationError('configuration')
   }
@@ -83,11 +87,12 @@ export async function tokenizeCard(
   merchantPublicKey: string,
   signal: AbortSignal,
   baseUrl: string = paymentApiBaseUrl,
+  expectedHost: string = paymentSandboxHost,
 ): Promise<string> {
-  const keyUrl = providerUrl(baseUrl, '/tokens/keys/tokenization')
-  const tokenUrl = providerUrl(baseUrl, '/tokens/cards')
   if (!/^pub_[a-z]+_[A-Za-z0-9_-]+$/.test(merchantPublicKey))
     throw new TokenizationError('configuration')
+  const keyUrl = providerUrl(baseUrl, '/tokens/keys/tokenization', expectedHost, merchantPublicKey)
+  const tokenUrl = providerUrl(baseUrl, '/tokens/cards', expectedHost, merchantPublicKey)
   if (!validCard(card)) throw new TokenizationError('invalid_card')
 
   const headers = { Authorization: `Bearer ${merchantPublicKey}`, Accept: 'application/json' }

@@ -13,3 +13,12 @@ export interface ConsentTerms {
 export interface ConsentTermsReader {
   getCurrent(): Promise<ConsentTerms>;
 }
+
+export type ConsentFailureCategory = 'auth' | 'timeout' | 'invalid_response' | 'network';
+
+export class ConsentTermsUnavailable extends Error {
+  constructor(readonly category: ConsentFailureCategory) {
+    super('Consent terms are temporarily unavailable');
+    this.name = 'ConsentTermsUnavailable';
+  }
+}

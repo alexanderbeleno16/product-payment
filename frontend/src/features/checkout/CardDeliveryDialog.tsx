@@ -194,6 +194,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
           </div>
         </div>
       </div>
+      {message && <p className="card-dialog__message" role="status">{message}</p>}
       <fieldset className="card-consents"><legend>Autorizaciones</legend>
         {termsStatus === 'loading' && <p role="status">Cargando documentos vigentes…</p>}
         {termsStatus === 'error' && <div role="alert"><p>No pudimos cargar los documentos vigentes.</p><button type="button" className="secondary-button" onClick={retryTerms}>Reintentar</button></div>}
@@ -206,7 +207,6 @@ function CardDeliveryDialog({ onPrepared }: Props) {
           {errorFor('dataAccepted') && <p className="card-field__error" id="card-data-error">{errorFor('dataAccepted')}</p>}
         </>}
       </fieldset>
-      {message && <p className="card-dialog__message" role="status">{message}</p>}
       <div className="card-dialog__actions"><button type="button" className="secondary-button" onClick={close}>Volver al producto</button>
         <button type="submit" className="primary-button" disabled={termsStatus !== 'ready' || submitting}>Continuar al resumen</button></div>
     </form>

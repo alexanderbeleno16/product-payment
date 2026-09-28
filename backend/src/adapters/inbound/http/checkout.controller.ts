@@ -8,6 +8,7 @@ import {
   Get,
   Header,
   Inject,
+  Logger,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -28,7 +29,7 @@ import type {
   CheckoutInput,
   CheckoutTransaction,
 } from '../../../application/checkout';
-import type { ConsentTermsReader } from '../../../application/consent-terms.port';
+import { ConsentTermsUnavailable, type ConsentTermsReader } from '../../../application/consent-terms.port';
 import { GetTransactionStatus } from '../../../application/get-transaction-status';
 import { InitiatePayment } from '../../../application/initiate-payment';
 import { QuoteCheckout } from '../../../application/quote-checkout';
@@ -93,6 +94,8 @@ function publicQuote(quote: CheckoutQuote): CheckoutQuote {
 @ApiTags('Checkout')
 @Controller()
 export class CheckoutController {
+  private readonly logger = new Logger(CheckoutController.name);
+
   constructor(
     private readonly quoteCheckout: QuoteCheckout,
     private readonly initiatePayment: InitiatePayment,
@@ -138,7 +141,9 @@ export class CheckoutController {
         endUserPolicy: terms.endUserPolicy,
         personalDataAuthorization: terms.personalDataAuthorization,
       };
-    } catch {
+    } catch (error) {
+      const category = error instanceof ConsentTermsUnavailable ? error.category : 'unexpected';
+      this.logger.warn(`Consent terms unavailable: ${category}`);
       throw new ServiceUnavailableException(
         'Consent terms are temporarily unavailable',
       );
