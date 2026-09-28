@@ -904,6 +904,16 @@
   }
 }
 
+@media (max-width: 26rem) {
+  .checkout-header__top { flex-wrap: wrap; }
+  .brand { max-width: 100%; min-width: 0; }
+  .brand__name { min-width: 0; overflow-wrap: anywhere; }
+  .step-pill { max-width: 100%; text-align: left; }
+  .checkout-progress li span:last-child { min-width: 0; overflow-wrap: anywhere; }
+  .subtotal { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
+  .subtotal strong { max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .primary-button {
     transition:
