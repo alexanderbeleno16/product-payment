@@ -257,6 +257,7 @@ test('retains approved stock-exception tracking on manual recheck and refresh', 
   fulfillmentStatus = 'CREATED'
   await userEvent.setup().click(screen.getByRole('button', { name: 'Consultar estado' }))
   expect(await screen.findByText('Pago aprobado y entrega creada.')).toBeVisible()
+  expect(screen.getByRole('heading', { name: 'Estado de tu compra' })).toHaveFocus()
   await userEvent.setup().click(screen.getByRole('button', { name: 'Volver al producto' }))
   expect(await screen.findByRole('heading', { name: 'Audífonos inalámbricos', level: 1 })).toBeVisible()
   expect(readPaymentRecovery()).toBeNull()
