@@ -13,9 +13,9 @@ import './CardDeliveryDialog.css'
 import { readContactProgress, writeContactProgress } from '../../app/contactProgress'
 import { useAppSelector } from '../../app/hooks'
 
-interface Props { onPrepared: (values: TokenizedCardDelivery) => void }
+interface Props { onPrepared: (values: TokenizedCardDelivery) => void; onClose?: () => void }
 
-function CardDeliveryDialog({ onPrepared }: Props) {
+function CardDeliveryDialog({ onPrepared, onClose }: Props) {
   const dispatch = useAppDispatch()
   const productId = useAppSelector((state) => state.checkout.productId)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -70,7 +70,8 @@ function CardDeliveryDialog({ onPrepared }: Props) {
 
   function close() {
     tokenControllerRef.current?.abort()
-    dispatch(productReturnRequested())
+    if (onClose) onClose()
+    else dispatch(productReturnRequested())
   }
 
   function changeText(event: ChangeEvent<HTMLInputElement>) {
@@ -215,7 +216,7 @@ function CardDeliveryDialog({ onPrepared }: Props) {
           {errorFor('dataAccepted') && <p className="card-field__error" id="card-data-error">{errorFor('dataAccepted')}</p>}
         </>}
       </fieldset>
-      <div className="card-dialog__actions"><button type="button" className="secondary-button" onClick={close}>Volver al producto</button>
+      <div className="card-dialog__actions"><button type="button" className="secondary-button" onClick={close}>{onClose ? 'Volver al resumen' : 'Volver al producto'}</button>
         <button type="submit" className="primary-button" disabled={termsStatus !== 'ready' || submitting}>Continuar al resumen</button></div>
     </form>
   </dialog>
