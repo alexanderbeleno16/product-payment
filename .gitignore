@@ -1,1 +1,4 @@
 odd/
+.env
+.env.*
+!.env.example

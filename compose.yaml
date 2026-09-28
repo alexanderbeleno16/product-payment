@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:17.7-alpine3.22
+    environment:
+      POSTGRES_USER: checkout
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the root .env file}
+      POSTGRES_DB: checkout
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - checkout_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://checkout:${DB_PASSWORD:?Set DB_PASSWORD in the root .env file}@db:5432/checkout
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        node dist/adapters/outbound/persistence/migrate.js
+        node dist/adapters/outbound/persistence/seed.js
+        exec node dist/main.js
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('node:http').get('http://127.0.0.1:3000/products', (response) => process.exit(response.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  checkout_pgdata:
