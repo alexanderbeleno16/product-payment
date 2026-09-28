@@ -1,184 +1,184 @@
-# Product Payment
+# Pago de productos
 
-This repository contains a React/Vite SPA and a NestJS backend. The SPA offers a ten-product demo catalog, one selected product at a time, a server-priced quote, a two-view gallery, a card/delivery modal with separate current consents and browser-side encrypted tokenization, a fee summary with explicit payment confirmation, and a status screen that can recover after refresh. The backend implements product reads, idempotent checkout initiation, signed payment-event verification, authoritative server-side status lookup, atomic confirmed-payment finalization, local status reads, and operator-only known-ID reconciliation. See the [frontend setup](frontend/README.md), [backend setup and API contract](backend/README.md), and [Postman collection](docs/product-payment.postman_collection.json). The collection is a repository artifact, not a hosted API URL: run its quote request first to populate `expectedTotalCents`, then supply the checkout's transient tokens locally. Never export or sync the collection with those values. Local tests exercise the browser flow with mocked network responses and the backend with fake and PostgreSQL adapters. A local sandbox approval and browser journey have been observed, but a deployed callback, public browser-provider interoperability, and AWS deployment remain unverified. The first three diagrams describe implemented local behavior; the cloud diagram is a proposal.
+Este repositorio contiene una SPA React/Vite y un backend NestJS. La SPA ofrece un catálogo de demostración de diez productos, la compra de un producto a la vez, una cotización calculada por el servidor, una galería de dos vistas, un modal de tarjeta y entrega con consentimientos vigentes separados y tokenización cifrada en el navegador, un resumen de tarifas con confirmación explícita del pago y una pantalla de estado recuperable tras actualizar la página. El backend implementa consultas de productos, inicio idempotente del checkout, verificación de eventos de pago firmados, consulta autoritativa del estado en el servidor, finalización atómica de pagos confirmados, consultas del estado local y conciliación exclusiva del operador para un ID conocido. Consulte la [configuración del frontend](frontend/README.md), la [configuración y el contrato de la API del backend](backend/README.md) y la [colección Postman](docs/product-payment.postman_collection.json). La colección es un archivo del repositorio, no una URL de API alojada: ejecute primero la solicitud de cotización para obtener `expectedTotalCents` y luego proporcione localmente los tokens transitorios del checkout. Nunca exporte ni sincronice la colección con esos valores. Las pruebas locales ejercitan el flujo del navegador con respuestas de red simuladas y el backend con adaptadores simulados y PostgreSQL. Se observaron una aprobación local en el entorno de prueba y un recorrido en navegador, pero la recepción de eventos desplegada, la interoperabilidad pública entre navegador y proveedor y el despliegue en AWS siguen sin verificarse. Los primeros tres diagramas describen el comportamiento local implementado; el diagrama de nube es una propuesta.
 
-## 1. Application architecture (implemented locally)
+## 1. Arquitectura de la aplicación (implementada localmente)
 
-The checkout use cases own business decisions. NestJS translates buyer requests and signed payment events; TypeORM and the payment integration remain outside the application core. Solid arrows show runtime calls, while dashed arrows show adapters implementing core-owned ports.
+Los casos de uso del checkout toman las decisiones de negocio. NestJS traduce las solicitudes del comprador y los eventos de pago firmados; TypeORM y la integración de pagos permanecen fuera del núcleo de aplicación. Las flechas continuas indican llamadas en tiempo de ejecución y las discontinuas, adaptadores que implementan puertos definidos por el núcleo.
 
 ```mermaid
 flowchart LR
-    Buyer[Buyer] --> SPA[React SPA and Redux Toolkit]
-    SPA --> HTTP[NestJS HTTP adapter]
-    Provider[Empresa innombrable sandbox] -->|Signed payment event| Event[NestJS event adapter]
-    Reconcile[Explicit reconciliation operation] --> UseCases
+    Buyer[Comprador] --> SPA[SPA React y Redux Toolkit]
+    SPA --> HTTP[Adaptador HTTP de NestJS]
+    Provider[Entorno de prueba de Empresa innombrable] -->|Evento de pago firmado| Event[Adaptador de eventos de NestJS]
+    Reconcile[Operación de conciliación explícita] --> UseCases
 
-    subgraph Core[Application core]
-        UseCases[Checkout use cases] --> Domain[Domain rules]
-        UseCases --> PersistencePort[Persistence port]
-        UseCases --> PaymentPort[Payment port]
+    subgraph Core[Núcleo de aplicación]
+        UseCases[Casos de uso del checkout] --> Domain[Reglas de dominio]
+        UseCases --> PersistencePort[Puerto de persistencia]
+        UseCases --> PaymentPort[Puerto de pago]
     end
 
     HTTP --> UseCases
     Event --> UseCases
 
-    subgraph Infrastructure[Infrastructure adapters]
-        TypeORM[TypeORM adapter] --> Database[(Database)]
-        PaymentAdapter[Payment API adapter] --> Provider
+    subgraph Infrastructure[Adaptadores de infraestructura]
+        TypeORM[Adaptador TypeORM] --> Database[(Base de datos)]
+        PaymentAdapter[Adaptador de API de pago] --> Provider
     end
 
-    TypeORM -. implements .-> PersistencePort
-    PaymentAdapter -. implements .-> PaymentPort
+    TypeORM -. implementa .-> PersistencePort
+    PaymentAdapter -. implementa .-> PaymentPort
 ```
 
-PostgreSQL and TypeORM implement product reads, pending checkout persistence, and atomic confirmed-payment/fulfillment effects. The application core owns checkout, payment-submission, status-reading, and finalization contracts and pure policy for authoritative fact binding, monotonic transitions, and fulfillment decisions. The TypeORM adapter executes the row lock and atomic writes; Nest HTTP and outbound adapters are composed at the edge. Signed-event ingress and an explicit operator reconciliation path are implemented. The SPA submits only after buyer confirmation and reads local status by the original idempotency key. Implemented routes and limitations are documented in the [backend README](backend/README.md). The core must not import NestJS, TypeORM, or payment-provider types.
+PostgreSQL y TypeORM implementan las consultas de productos, la persistencia de checkouts pendientes y los efectos atómicos de pagos confirmados y entregas. El núcleo de aplicación define los contratos de checkout, envío del pago, consulta de estado y finalización, además de la política pura de vinculación de hechos autoritativos, transiciones monótonas y decisiones de entrega. El adaptador TypeORM ejecuta el bloqueo de fila y las escrituras atómicas; los adaptadores HTTP de Nest y de salida se componen en el borde. Están implementadas la recepción de eventos firmados y un mecanismo de conciliación explícita para el operador. La SPA envía el pago únicamente después de la confirmación del comprador y consulta el estado local con la clave de idempotencia original. Las rutas implementadas y sus limitaciones se documentan en el [README del backend](backend/README.md). El núcleo no debe importar NestJS, TypeORM ni tipos del proveedor de pagos.
 
-## 2. Buyer journey (implemented locally)
+## 2. Recorrido del comprador (implementado localmente)
 
-The optional catalog is an added way to choose one of ten seeded products; it is not a cart or an extra checkout step. The required journey still has five steps for one selected product. Card entry is a modal within the second step, not an extra step. Card and delivery fields must be validated. The buyer chooses a quantity; the server remains authoritative for price, fees, stock, and payment status.
+El catálogo opcional agrega una manera de elegir entre diez productos cargados inicialmente; no es un carrito ni un paso adicional del checkout. El recorrido requerido sigue teniendo cinco pasos para un único producto seleccionado. El ingreso de la tarjeta ocurre en un modal dentro del segundo paso, no en un paso adicional. Los campos de tarjeta y entrega deben validarse. El comprador elige la cantidad; el servidor conserva la autoridad sobre precio, tarifas, existencias y estado del pago.
 
 ```mermaid
 flowchart LR
-    Catalog["Optional catalog<br/>Choose one seeded product"] --> Product
-    Product["1. Product<br/>Select quantity"] --> Details["2. Card and delivery details<br/>Card modal"]
-    Product -->|Breadcrumb back| Catalog
-    Details --> Summary["3. Summary<br/>Amounts, fees, and backdrop pay button"]
-    Summary --> Status["4. Final status<br/>Confirmed, rejected, or pending"]
-    Status -->|Approved and fulfilled: reduced stock| Updated["5. Product page<br/>Show current stock"]
-    Status -->|Approved, fulfillment unresolved: keep tracking| Status
-    Status -->|Rejected: stock unchanged| Updated
-    Status -->|Pending: check again| Status
-    Updated -->|New payment attempt| Details
+    Catalog["Catálogo opcional<br/>Elegir un producto inicial"] --> Product
+    Product["1. Producto<br/>Elegir cantidad"] --> Details["2. Tarjeta y entrega<br/>Modal de tarjeta"]
+    Product -->|Volver por la ruta de navegación| Catalog
+    Details --> Summary["3. Resumen<br/>Importes, tarifas y botón de pago"]
+    Summary --> Status["4. Estado final<br/>Confirmado, rechazado o pendiente"]
+    Status -->|Aprobado y entregado: existencias reducidas| Updated["5. Página del producto<br/>Mostrar existencias actuales"]
+    Status -->|Aprobado, entrega sin resolver: seguir consultando| Status
+    Status -->|Rechazado: existencias sin cambios| Updated
+    Status -->|Pendiente: volver a consultar| Status
+    Updated -->|Nuevo intento de pago| Details
 ```
 
-Before payment, refresh restores only the selected product ID and quantity from a validated `sessionStorage` allowlist; product and quote are re-fetched and card details/consents must be entered again. Before the payment POST, a separate versioned allowlist saves product ID, quantity, and the original random UUIDv4 idempotency key. Refresh on the status step uses that key with read-only `GET /checkouts/status`, never a new payment POST. Unreadable storage prevents a fresh payment attempt. Raw card fields, token, and consent evidence are never restored. A pending or unknown outcome must not be presented as a rejection or successful delivery; an approved payment without a created delivery remains trackable.
+Antes del pago, actualizar la página restaura únicamente el ID y la cantidad del producto seleccionado desde una lista permitida validada en `sessionStorage`; se vuelven a consultar el producto y la cotización, y deben introducirse nuevamente los datos de la tarjeta y los consentimientos. Antes del POST de pago, otra lista permitida y versionada guarda el ID, la cantidad y la clave de idempotencia UUIDv4 aleatoria original. Al actualizar la página en el paso de estado, se utiliza esa clave con el `GET /checkouts/status` de solo lectura, nunca con un nuevo POST de pago. Si el almacenamiento es ilegible, se impide un nuevo intento de pago. Nunca se restauran los datos de tarjeta sin cifrar, el token ni la evidencia de consentimiento. Un resultado pendiente o desconocido no debe mostrarse como rechazo ni como entrega exitosa; un pago aprobado sin entrega creada permanece disponible para seguimiento.
 
-## 3. Payment and fulfillment sequence (implemented locally; live terminal outcome unverified)
+## 3. Secuencia de pago y entrega (implementada localmente; resultado terminal en vivo sin verificar)
 
-The provider's verified outcome—not the browser, a `201`, or an HTTP timeout—controls fulfillment. The backend implements signed-event-triggered authoritative lookup, atomic finalization, read-only local status, and a separate operator-only reconciliation command for a known, locally bound provider ID. The SPA now submits from the explicit confirmation handler, persists the original key before POST, and performs at most three automatic status checks; later checks are buyer-triggered. It reads **our local API state** only. A lost POST response or refresh uses `GET /checkouts/status` with that same key and never blindly re-POSTs. Live terminal approval and a deployed callback remain unverified.
+El resultado verificado del proveedor —no el navegador, un `201` ni un tiempo de espera HTTP— determina la entrega. El backend implementa una consulta autoritativa iniciada por un evento firmado, finalización atómica, estado local de solo lectura y un comando de conciliación separado y exclusivo del operador para un ID de proveedor conocido y vinculado localmente. La SPA envía ahora el pago desde el manejador de confirmación explícita, persiste la clave original antes del POST y realiza como máximo tres consultas automáticas de estado; las consultas posteriores las solicita el comprador. Solo lee **el estado de nuestra API local**. Una respuesta POST perdida o una actualización de página utiliza `GET /checkouts/status` con la misma clave, sin repetir a ciegas el POST. La aprobación terminal en vivo y una recepción de eventos desplegada siguen sin verificarse.
 
 ```mermaid
 sequenceDiagram
-    actor Buyer
+    actor Buyer as Comprador
     participant SPA as React SPA
     participant Provider as Empresa innombrable
     participant API as NestJS API
-    participant DB as Database
+    participant DB as Base de datos
 
-    opt Browse the optional ten-product catalog
+    opt Explorar el catálogo opcional de diez productos
         SPA->>API: GET /products
-        API->>DB: Read current products and stock
-        DB-->>API: Product list
-        API-->>SPA: Product list
-        Buyer->>SPA: Choose one product
+        API->>DB: Consultar productos y existencias actuales
+        DB-->>API: Lista de productos
+        API-->>SPA: Lista de productos
+        Buyer->>SPA: Elegir un producto
     end
-    SPA->>API: GET /products/:id for the selected product
-    API->>DB: Read current product and stock
-    DB-->>API: Current product detail
-    API-->>SPA: Current product detail
-    Buyer->>SPA: Choose quantity for one product
+    SPA->>API: GET /products/:id del producto seleccionado
+    API->>DB: Consultar producto y existencias actuales
+    DB-->>API: Detalle actual del producto
+    API-->>SPA: Detalle actual del producto
+    Buyer->>SPA: Elegir cantidad de un producto
     SPA->>API: GET /checkout/quote
-    API-->>SPA: Server-priced quote
-    Buyer->>SPA: Enter delivery and card details
+    API-->>SPA: Cotización calculada por el servidor
+    Buyer->>SPA: Ingresar datos de entrega y tarjeta
     SPA->>API: GET /checkout/consents
-    API-->>SPA: Current policy links, consent tokens, public key
-    Buyer->>SPA: Explicitly accept both current consent documents
-    SPA->>SPA: Validate card, delivery, and both consents
+    API-->>SPA: Enlaces vigentes, tokens de consentimiento y clave pública
+    Buyer->>SPA: Aceptar explícitamente ambos documentos vigentes
+    SPA->>SPA: Validar tarjeta, entrega y ambos consentimientos
     SPA->>API: GET /checkout/tokenization-key
-    API->>Provider: Fetch public encryption key
-    Provider-->>API: Public encryption key
-    API-->>SPA: Public encryption key only
-    SPA->>SPA: Encrypt card details as compact JWE
-    SPA->>API: POST /checkout/card-tokens with compact JWE only
-    API->>Provider: Relay compact JWE for tokenization
-    Provider-->>API: Opaque card token
-    API-->>SPA: Opaque card token only
-    SPA->>API: GET /checkout/quote before summary
-    API-->>SPA: Refreshed server-priced quote
-    SPA-->>Buyer: Show fee summary and final confirmation dialog
-    Buyer->>SPA: Explicitly confirm and pay
-    SPA->>SPA: Save original UUIDv4 key, product ID, and quantity in sessionStorage
-    SPA->>API: POST /checkouts with token, delivery, expectedTotalCents, and Idempotency-Key
-    API->>DB: Look up key and compare canonical checkout fingerprint
-    alt Same key and same checkout already exist
-        DB-->>API: Existing reference and state
-        API-->>SPA: Return existing result without another charge
-    else Same key with different checkout data
-        API-->>SPA: Reject conflicting replay
-    else First submission
-        API->>DB: Load canonical product and stock
-        API->>API: Validate quantity and compare current total with expectedTotalCents
-        alt Confirmed total changed
-            API-->>SPA: 409 QUOTE_CHANGED without provider submission
-        else Confirmed total matches
-        API->>DB: Claim unique key and save customer and PENDING transaction atomically
-        API->>DB: Mark provider submission started before network call
-        API->>Provider: Request sandbox payment with unique reference
-        alt Provider acknowledges PENDING
-            Provider-->>API: Provider ID and initial PENDING status
-            API->>DB: Attach provider ID without downgrading a later state
-            API->>DB: Read latest local state after any racing event
-            API-->>SPA: Transaction reference and current state
-        else Outcome unknown after timeout
-            API->>DB: Keep unresolved without retrying charge blindly
-            API-->>SPA: Transaction reference and unresolved state
+    API->>Provider: Consultar clave pública de cifrado
+    Provider-->>API: Clave pública de cifrado
+    API-->>SPA: Solo clave pública de cifrado
+    SPA->>SPA: Cifrar datos de tarjeta como JWE compacto
+    SPA->>API: POST /checkout/card-tokens solo con JWE compacto
+    API->>Provider: Transmitir JWE compacto para tokenización
+    Provider-->>API: Token opaco de tarjeta
+    API-->>SPA: Solo token opaco de tarjeta
+    SPA->>API: GET /checkout/quote antes del resumen
+    API-->>SPA: Cotización actualizada calculada por el servidor
+    SPA-->>Buyer: Mostrar resumen de tarifas y confirmación final
+    Buyer->>SPA: Confirmar y pagar explícitamente
+    SPA->>SPA: Guardar clave UUIDv4 original, ID y cantidad en sessionStorage
+    SPA->>API: POST /checkouts con token, entrega, expectedTotalCents e Idempotency-Key
+    API->>DB: Consultar clave y comparar huella canónica del checkout
+    alt Ya existe la misma clave y el mismo checkout
+        DB-->>API: Referencia y estado existentes
+        API-->>SPA: Devolver resultado existente sin otro cobro
+    else Misma clave con otros datos de checkout
+        API-->>SPA: Rechazar repetición conflictiva
+    else Primer envío
+        API->>DB: Consultar producto y existencias canónicos
+        API->>API: Validar cantidad y comparar total actual con expectedTotalCents
+        alt Cambió el total confirmado
+            API-->>SPA: 409 QUOTE_CHANGED sin enviar al proveedor
+        else Coincide el total confirmado
+        API->>DB: Reservar clave única y guardar cliente y transacción PENDING atómicamente
+        API->>DB: Registrar inicio del envío antes de la llamada de red
+        API->>Provider: Solicitar pago de prueba con referencia única
+        alt El proveedor acusa PENDING
+            Provider-->>API: ID del proveedor y estado PENDING inicial
+            API->>DB: Vincular ID del proveedor sin degradar estado posterior
+            API->>DB: Consultar último estado local tras eventos concurrentes
+            API-->>SPA: Referencia y estado actual de transacción
+        else Resultado desconocido tras tiempo de espera
+            API->>DB: Mantener sin resolver, sin repetir cobro a ciegas
+            API-->>SPA: Referencia y estado sin resolver
         end
         end
     end
 
-    Provider-->>API: Signed transaction update, possibly before payment response
-    API->>API: Verify event shape, environment, checksum, and signed ID
-    API->>Provider: GET transaction by signed ID with server-only key
-    Provider-->>API: Authoritative ID, reference, amount, currency, and status
-    API->>DB: Lock local transaction and bind authoritative facts
-    alt Confirmed APPROVED and stock sufficient
-        API->>DB: Atomically guard transition, decrement stock, create one delivery
-        DB-->>API: Payment approved and fulfilled
-    else Confirmed APPROVED but stock unavailable
-        API->>DB: Record approved payment with fulfillment needing reconciliation
-    else Confirmed failure
-        API->>DB: Record terminal failure without stock or delivery effects
-    else Duplicate, stale, or still pending
-        API->>DB: Keep existing state and effects
+    Provider-->>API: Actualización de transacción firmada, posiblemente antes de respuesta de pago
+    API->>API: Verificar estructura, entorno, suma de comprobación e ID firmado
+    API->>Provider: GET de transacción por ID firmado con clave del servidor
+    Provider-->>API: ID, referencia, importe, moneda y estado autoritativos
+    API->>DB: Bloquear transacción local y vincular hechos autoritativos
+    alt APPROVED confirmado y existencias suficientes
+        API->>DB: Proteger transición, reducir existencias y crear una entrega atómicamente
+        DB-->>API: Pago aprobado y entrega creada
+    else APPROVED confirmado sin existencias
+        API->>DB: Registrar pago aprobado con entrega pendiente de conciliación
+    else Fallo confirmado
+        API->>DB: Registrar fallo terminal sin afectar existencias ni entregas
+    else Duplicado, antiguo o aún pendiente
+        API->>DB: Conservar estado y efectos existentes
     end
 
-    loop Bounded polling, manual recheck, or after browser refresh
-        SPA->>API: GET /checkouts/status with original Idempotency-Key
-        API->>DB: Read payment and fulfillment state only
-        DB-->>API: Current state
-        API-->>SPA: Current state without mutation
+    loop Consultas acotadas, consulta manual o actualización del navegador
+        SPA->>API: GET /checkouts/status con Idempotency-Key original
+        API->>DB: Consultar solo estados de pago y entrega
+        DB-->>API: Estado actual
+        API-->>SPA: Estado actual sin modificaciones
     end
 
-    opt Return to product after resolved outcome and safe fulfillment state
+    opt Volver al producto tras un resultado resuelto y entrega segura
         SPA->>API: GET /products/:id
-        API-->>SPA: Current stock, not an optimistic decrement
+        API-->>SPA: Existencias actuales, no reducción optimista
     end
 
-    opt Operator-only explicit reconciliation for a locally bound ID
-        API->>DB: Read one checkout by local reference
-        API->>Provider: Fetch status by known provider ID server-side
-        Provider-->>API: Current provider status
-        API->>API: Apply the same guarded finalization use case
+    opt Conciliación explícita del operador para un ID vinculado localmente
+        API->>DB: Consultar un checkout por referencia local
+        API->>Provider: Consultar estado por ID conocido del proveedor en el servidor
+        Provider-->>API: Estado actual del proveedor
+        API->>API: Aplicar el mismo caso de uso de finalización protegido
     end
 ```
 
-Idempotency has two boundaries. The browser keeps one original key for the confirmed attempt, and the backend returns an existing transaction for a matching key and canonical business-data fingerprint—even if the product price later changes. Reusing the key with changed checkout data or expected total conflicts. A new first submission with a changed server total is rejected before persistence or provider I/O. The fingerprint does not contain the transient payment token. A database unique constraint resolves concurrent first submissions, and a durable submission claim prevents concurrent requests from sending another charge. A timeout after sending and before receiving the provider ID remains **unknown**. A unique reference or duplicate-reference error does not prove that a second provider POST is safe. A signed event may recover the result by reference; otherwise reconcile through a documented provider capability or manual investigation, never an automatic blind retry. The payment token is transient input, not persisted checkout state.
+La idempotencia tiene dos límites. El navegador conserva una clave original por intento confirmado y el backend devuelve una transacción existente cuando coinciden la clave y la huella de los datos de negocio canónicos, incluso si después cambia el precio del producto. Reutilizar la clave con otros datos de compra u otro total esperado produce un conflicto. Un primer envío nuevo con un total del servidor modificado se rechaza antes de persistir o invocar al proveedor. La huella no contiene el token de pago transitorio. Una restricción única de base de datos resuelve primeros envíos concurrentes y un registro duradero del inicio de envío evita que solicitudes concurrentes produzcan otro cobro. Un tiempo de espera después del envío y antes de recibir el ID del proveedor deja el resultado **desconocido**. Un error de referencia única o duplicada no demuestra que un segundo POST al proveedor sea seguro. Un evento firmado puede recuperar el resultado por referencia; de lo contrario, debe conciliarse mediante una capacidad documentada del proveedor o investigación manual, nunca mediante un reintento automático a ciegas. El token de pago es una entrada transitoria, no estado persistido del checkout.
 
-External payment and local database writes cannot be one transaction. The persistence adapter atomically creates PENDING checkouts and durably claims one provider submission before network I/O. Finalization uses one PostgreSQL transaction: the TypeORM adapter locks the checkout row and executes conditional stock and unique-delivery writes, while pure application-core policy decides authoritative fact binding, monotonic transitions, and fulfillment outcomes from the locked facts. Duplicate or out-of-order events cannot repeat effects. A provider success that cannot be persisted remains eligible for event retry or explicit reconciliation; event delivery alone is not an unlimited guarantee. The operator command reconciles one checkout with a known, locally bound provider ID independently of the browser; attempts without an ID require a verified event or manual investigation unless a supported lookup is confirmed. Payment and fulfillment status remain distinct: an approved charge with unavailable stock does not claim a delivery. The implemented local status `GET` reads only; it never triggers provider calls or fulfillment writes. Raw card data must never be stored in the application database or logs.
+El pago externo y las escrituras en la base de datos local no pueden formar una única transacción. El adaptador de persistencia crea atómicamente los checkouts PENDING y registra de forma duradera un único inicio de envío al proveedor antes de la llamada de red. La finalización utiliza una transacción PostgreSQL: el adaptador TypeORM bloquea la fila de checkout y ejecuta la actualización condicional de existencias y la inserción de una entrega única, mientras una política pura del núcleo decide la vinculación de hechos autoritativos, las transiciones monótonas y los resultados de entrega a partir de los hechos bloqueados. Los eventos duplicados o desordenados no pueden repetir efectos. Un éxito del proveedor que no se pueda persistir sigue siendo elegible para reintentar el evento o conciliar explícitamente; la entrega del evento por sí sola no ofrece garantías ilimitadas. El comando del operador concilia un checkout con un ID de proveedor conocido y vinculado localmente, independientemente del navegador; los intentos sin ID requieren un evento verificado o investigación manual, salvo que se confirme un mecanismo de consulta compatible. El estado del pago y el de la entrega son distintos: un cobro aprobado sin existencias disponibles no implica una entrega. El `GET` de estado local implementado solo lee; nunca llama al proveedor ni escribe efectos de entrega. Los datos de tarjeta sin cifrar nunca deben almacenarse en la base de datos ni en los registros de la aplicación.
 
-The brief groups stock and delivery updates under both completed and failed outcomes. The implementation deliberately applies those effects only after confirmed success; a failed payment must not create a delivery or reduce stock.
+El documento de la prueba agrupa las actualizaciones de existencias y entregas tanto en resultados completados como fallidos. La implementación aplica deliberadamente esos efectos solo después de un éxito confirmado; un pago fallido no debe crear una entrega ni reducir las existencias.
 
-The implemented HTTP surface includes read-only `GET /products` (an array with current stock) and `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `GET /checkout/tokenization-key`, `POST /checkout/card-tokens`, `POST /checkouts`, `GET /checkouts/status`, `GET /transactions/:reference`, and signed `POST /payment/events` (the scaffold's `GET /` remains). Customer and delivery data are managed internally, not exposed as public CRUD endpoints. Both status lookups require the original idempotency key and return only reference, payment status, and fulfillment status; stronger access control is needed before public deployment. Confirmed fulfillment is internal, with no buyer delivery CRUD endpoint. Reconciliation is an operator CLI, not a public route. The [Postman collection](docs/product-payment.postman_collection.json) is a local contract artifact with quote, recovery, and tokenization examples. Run the quote immediately before checkout: its response script stores only the server's integer `totalCents` as `expectedTotalCents`. Supply fresh transient JWE/card/consent tokens only in a local session and clear them before any export; the collection does not retain their values. The signed event is provider-to-server and deliberately not represented as a manually runnable request. Local Swagger UI is available at `http://localhost:3000/api` and OpenAPI JSON at `http://localhost:3000/api-json` while the backend runs. Neither URL is public.
+La superficie HTTP implementada incluye `GET /products` de solo lectura (una lista con existencias actuales) y `GET /products/:id`, `GET /checkout/quote`, `GET /checkout/consents`, `GET /checkout/tokenization-key`, `POST /checkout/card-tokens`, `POST /checkouts`, `GET /checkouts/status`, `GET /transactions/:reference` y `POST /payment/events` firmado (permanece el `GET /` del proyecto inicial). Los datos de clientes y entregas se gestionan internamente; no se exponen como endpoints CRUD públicos. Ambas consultas de estado requieren la clave de idempotencia original y devuelven únicamente referencia, estado del pago y estado de la entrega; antes de un despliegue público se necesita un control de acceso más sólido. La entrega confirmada es interna; no hay un endpoint CRUD de entregas para compradores. La conciliación es una CLI para el operador, no una ruta pública. La [colección Postman](docs/product-payment.postman_collection.json) es un contrato local con ejemplos de cotización, recuperación y tokenización. Ejecute la cotización justo antes del checkout: su script de respuesta guarda únicamente el entero `totalCents` del servidor como `expectedTotalCents`. Proporcione tokens JWE, de tarjeta y de consentimiento nuevos únicamente en una sesión local y bórrelos antes de exportar; la colección no conserva sus valores. El evento firmado va del proveedor al servidor y deliberadamente no aparece como una solicitud ejecutable de forma manual. La interfaz Swagger local está disponible en `http://localhost:3000/api` y el JSON OpenAPI en `http://localhost:3000/api-json` mientras se ejecuta el backend. Ninguna de las URL es pública.
 
-**Customer and delivery API boundary:** The brief requires the API to handle stock, transactions, customers, and deliveries, but does not prescribe `GET /customers`, `GET /deliveries`, or generic CRUD routes. Checkout records the customer's contact and delivery details; verified successful payment creates the delivery and updates stock atomically. The buyer-facing status endpoints intentionally return only payment and fulfillment states, not names, email addresses, or street addresses. Public customer or delivery listings would expose personal data without a buyer/operator authentication and object-level authorization model, so they are not implemented. If administrative lookup becomes necessary, it must be a separately authorized, narrowly scoped API rather than unrestricted CRUD.
+**Límite de la API para clientes y entregas:** el documento de la prueba exige que la API gestione existencias, transacciones, clientes y entregas, pero no prescribe `GET /customers`, `GET /deliveries` ni rutas CRUD genéricas. El checkout registra el contacto del cliente y los datos de entrega; un pago exitoso verificado crea la entrega y actualiza las existencias de forma atómica. Los endpoints de estado para compradores devuelven deliberadamente solo los estados de pago y entrega, no nombres, correos electrónicos ni direcciones. Los listados públicos de clientes o entregas expondrían datos personales sin un modelo de autenticación de comprador u operador y autorización por objeto, por lo que no se implementaron. Si se necesita una consulta administrativa, deberá ser una API independiente, autorizada y de alcance restringido, no un CRUD sin restricciones.
 
-Local Jest evidence on 2026-09-28: at `5d265f15`, `cd frontend && npm run test:coverage -- --runInBand` passed 127 tests in 17 suites with 92.76% statements, 90.44% branches, 95.43% functions, and 94.96% lines. On the subsequent local Hito 4 worktree, with `CHECKOUT_TEST_DATABASE_URL` pointing to a disposable PostgreSQL test database, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` passed 154 tests in 29 suites and measured 87.33% statements, 83.28% branches, 83.23% functions, and 87.99% lines. The PostgreSQL-backed E2E command passed 40 tests in 6 suites. Build and lint passed in both applications. The disposable test database was removed after the run. These measurements exceed the brief's strict >80% target in each application; they do not establish a deployed callback or public payment journey. Without a configured test database, PostgreSQL tests skip and backend coverage is lower. See the [Hito 3 evidence matrix](docs/hito3-verification.md) for requirement, architecture, skill, code, and limitation mapping.
+Evidencia local de Jest del 2026-09-28: en `5d265f15`, `cd frontend && npm run test:coverage -- --runInBand` pasó 127 pruebas en 17 suites, con 92.76% de sentencias, 90.44% de ramas, 95.43% de funciones y 94.96% de líneas. En el árbol de trabajo local posterior del Hito 4, con `CHECKOUT_TEST_DATABASE_URL` apuntando a una base PostgreSQL de prueba desechable, `cd backend && npm run test:cov -- --runInBand --coverageReporters=text-summary` pasó 154 pruebas en 29 suites y midió 87.33% de sentencias, 83.28% de ramas, 83.23% de funciones y 87.99% de líneas. El comando E2E con PostgreSQL pasó 40 pruebas en 6 suites. Compilación y lint pasaron en ambas aplicaciones. La base de datos de prueba desechable se eliminó después. Estas mediciones superan el objetivo estricto de >80% del documento en cada aplicación; no prueban la recepción de eventos desplegada ni un recorrido público de pago. Sin una base de datos de prueba configurada, las pruebas PostgreSQL se omiten y la cobertura del backend es menor.
 
-Backend tests cover duplicate and concurrent checkout submissions, a replay with changed data, timeout before provider ID, signed-event replay and reordering, approval after stock depletion, and local rollback on delivery insertion failure. Unit tests cover use-case policy; PostgreSQL integration tests prove atomicity and uniqueness. A local sandbox approval was observed, but a deployed callback and public terminal-payment journey remain unverified. Jest coverage is measured separately for backend and frontend before claiming the brief's greater-than-80% target.
+Las pruebas del backend cubren envíos de checkout duplicados y concurrentes, un reenvío con datos modificados, un tiempo de espera previo al ID del proveedor, repetición y desorden de eventos firmados, aprobación tras agotarse las existencias y reversión local ante un fallo al insertar la entrega. Las pruebas unitarias cubren la política de casos de uso; las pruebas de integración PostgreSQL demuestran atomicidad y unicidad. Se observó una aprobación local en el entorno de prueba, pero la recepción de eventos desplegada y un recorrido público hasta un estado terminal siguen sin verificarse. La cobertura Jest se mide por separado para backend y frontend antes de afirmar que se alcanzó el objetivo superior al 80% del documento.
 
-## 4. Current backend data model
+## 4. Modelo de datos actual del backend
 
-This summarizes the implemented PostgreSQL schema. A transaction stores the selected product and price/fee snapshot. Recipient and address details remain on the customer row while payment is pending; a **delivery row exists only after confirmed approval with sufficient stock**.
+Este resumen describe el esquema PostgreSQL implementado. Una transacción guarda el producto seleccionado y una instantánea de precios y tarifas. Los datos del destinatario y la dirección permanecen en la fila del cliente mientras el pago está pendiente; **solo existe una fila de entrega después de una aprobación confirmada con existencias suficientes**.
 
 ```mermaid
 erDiagram
@@ -236,46 +236,46 @@ erDiagram
     }
 ```
 
-The authoritative price and stock live on the server. Amounts are integer COP cents, IDs are UUIDs, and the reference and idempotency key are unique. The provider transaction ID and submission timestamp may be null while an attempt is unresolved. A delivery's transaction ID is unique; finalization conditionally decrements stock only for confirmed approval with sufficient stock. Static frontend images are not part of this schema.
+El precio y las existencias definidos como autoridad por el servidor residen en el servidor. Los importes son centavos COP enteros, los ID son UUID y la referencia y clave de idempotencia son únicas. El ID de transacción del proveedor y la marca temporal de inicio del envío pueden ser nulos mientras no se resuelva un intento. El ID de transacción de una entrega es único; la finalización reduce las existencias de forma condicional solo ante una aprobación confirmada con existencias suficientes. Las imágenes estáticas del frontend no forman parte de este esquema.
 
-## Image handling (current)
+## Gestión de imágenes (actual)
 
-The SPA serves two optimized local WebP views for each of ten seeded products from `frontend/public/`. `frontend/public/brand-mark.webp` supplies the store mark. A frontend-only [product ID-to-image map](frontend/src/features/checkout/productImages.ts) associates these static assets with known seed IDs; PostgreSQL has no image column or upload service, and the product API does not return image URLs. Unknown products show an image-unavailable state, not an unrelated photo. The catalog prioritizes its first two images and lazy-loads later ones; the selected product shows a gallery with thumbnail selection and a full-screen lightbox. Local browser checks covered ten cards and 320–1280px layouts against NestJS and PostgreSQL, but no production image-loading latency guarantee is claimed.
+La SPA sirve dos vistas WebP locales optimizadas por cada uno de los diez productos cargados inicialmente desde `frontend/public/`. `frontend/public/brand-mark.webp` proporciona la marca de la tienda. Un [mapa de ID de producto a imagen](frontend/src/features/checkout/productImages.ts) exclusivo del frontend vincula estos recursos estáticos con los ID iniciales conocidos; PostgreSQL no tiene columna de imagen ni servicio de carga, y la API de productos no devuelve URL de imágenes. Los productos desconocidos muestran un estado de imagen no disponible, no una foto ajena. El catálogo prioriza sus dos primeras imágenes y carga de forma diferida las siguientes; el producto seleccionado presenta una galería con selección de miniaturas y visor de pantalla completa. Las comprobaciones locales en navegador cubrieron diez tarjetas y diseños de 320–1280px frente a NestJS y PostgreSQL, pero no se afirma ninguna garantía de latencia de carga de imágenes en producción.
 
-## 5. AWS deployment topology (proposed)
+## 5. Topología de despliegue en AWS (propuesta)
 
-This is a deployment proposal, **not an existing AWS environment**. The diagram shows only runtime traffic. The React build is static, so it does not need a production frontend container. The only application container runs NestJS; PostgreSQL is proposed as a managed, non-public database rather than a production database container.
+Esta es una propuesta de despliegue, **no un entorno AWS existente**. El diagrama muestra únicamente tráfico de ejecución. La compilación de React es estática, por lo que no necesita un contenedor de frontend en producción. El único contenedor de aplicación ejecutaría NestJS; se propone PostgreSQL como base de datos administrada y no pública, en lugar de un contenedor de base de datos en producción.
 
 ```mermaid
 flowchart LR
-    Browser[Buyer browser]
-    Provider[Empresa innombrable sandbox]
+    Browser[Navegador del comprador]
+    Provider[Entorno de prueba de Empresa innombrable]
 
-    subgraph AWS["AWS - proposed"]
-        CloudFront[CloudFront<br/>HTTPS frontend]
-        S3[(Private S3 bucket<br/>React build and images)]
+    subgraph AWS["AWS - propuesta"]
+        CloudFront[CloudFront<br/>Frontend HTTPS]
+        S3[(Bucket S3 privado<br/>Compilación React e imágenes)]
         subgraph VPC["VPC"]
-            ALB[Public ALB<br/>ECS Express Mode HTTPS endpoint]
-            ECS[ECS Fargate task<br/>NestJS API]
-            RDS[(Private RDS<br/>PostgreSQL)]
+            ALB[ALB público<br/>Endpoint HTTPS de ECS Express Mode]
+            ECS[Tarea ECS Fargate<br/>API NestJS]
+            RDS[(RDS privado<br/>PostgreSQL)]
         end
     end
 
-    Browser -->|Load SPA over HTTPS| CloudFront
-    CloudFront -->|Private origin access| S3
-    Browser -->|Call API over HTTPS| ALB
-    ALB -->|HTTP to task| ECS
-    Browser -->|Encrypted JWE to same-origin path| CloudFront
-    CloudFront -->|Uncached tokenization routes| ALB
-    Provider -->|Signed payment event over HTTPS| ALB
-    ECS -->|Restricted PostgreSQL 5432| RDS
-    ECS -->|Payment and explicit reconciliation over HTTPS| Provider
+    Browser -->|Cargar SPA por HTTPS| CloudFront
+    CloudFront -->|Acceso privado al origen| S3
+    Browser -->|Llamar a la API por HTTPS| ALB
+    ALB -->|HTTP a la tarea| ECS
+    Browser -->|JWE cifrado a ruta del mismo origen| CloudFront
+    CloudFront -->|Rutas de tokenización sin caché| ALB
+    Provider -->|Evento de pago firmado por HTTPS| ALB
+    ECS -->|PostgreSQL 5432 restringido| RDS
+    ECS -->|Pago y conciliación explícita por HTTPS| Provider
 ```
 
-CloudFront would serve the SPA from S3 with origin access control. ECS Express Mode would create an internet-facing ALB and a Fargate task in the default VPC's public subnets. Public HTTPS terminates at the ALB; its target connection to the NestJS task uses HTTP by default. Restrict task ingress to the ALB and keep RDS non-public, in the same VPC, with PostgreSQL port 5432 open only from the task's security group. The task needs outbound HTTPS access to the payment provider; the public event endpoint must verify its signature and transaction identity before any state change. This public-subnet proposal avoids a NAT gateway; moving the task to private subnets would require revisiting both public ingress and internet egress. CloudFront must route `/checkout/*` to the API as a same-origin HTTPS behavior, forward GET/POST and required headers, and disable caching for public-key and tokenization responses. Other API paths may remain on a separate HTTPS origin with deliberate CORS/CSP. The browser encrypts the card before sending a compact JWE through the API; raw card fields must not pass through it. A local per-process guard now bounds both public tokenization routes, but AWS still requires edge/distributed per-client limits, trusted proxy/IP policy, and abuse monitoring before public exposure; ALB peer addresses are not buyer identities.
+CloudFront serviría la SPA desde S3 con control de acceso al origen. ECS Express Mode crearía un ALB accesible desde Internet y una tarea Fargate en las subredes públicas de la VPC predeterminada. El HTTPS público terminaría en el ALB; su conexión con la tarea NestJS usaría HTTP de forma predeterminada. Restringí el ingreso a la tarea para permitir solo el ALB y mantenga RDS no público, en la misma VPC, con el puerto PostgreSQL 5432 abierto únicamente al grupo de seguridad de la tarea. La tarea necesita salida HTTPS hacia el proveedor de pagos; el endpoint público de eventos debe verificar firma e identidad de transacción antes de cambiar cualquier estado. Esta propuesta de subred pública evita una puerta de enlace NAT; mover la tarea a subredes privadas exigiría revisar tanto el ingreso público como la salida a Internet. CloudFront debe dirigir `/checkout/*` a la API como comportamiento HTTPS del mismo origen, reenviar GET/POST y las cabeceras necesarias, y desactivar la caché de respuestas de clave pública y tokenización. Otras rutas de API pueden permanecer en un origen HTTPS separado con CORS/CSP configurados deliberadamente. El navegador cifra la tarjeta antes de enviar un JWE compacto a través de la API; los datos de tarjeta sin cifrar no deben atravesarla. Una protección local por proceso ya limita ambas rutas públicas de tokenización, pero AWS aún requiere límites distribuidos o perimetrales por cliente, una política de proxy/IP confiable y supervisión de abuso antes de la exposición pública; las direcciones de pares del ALB no identifican al comprador.
 
-Before deployment, configure an SPA route fallback to `index.html` for browser refreshes, supply database and provider credentials through a secret mechanism rather than the image or frontend build, and verify the actual TLS, headers, and security-group rules. These operational details are intentionally not extra boxes in the runtime diagram.
+Antes del despliegue, configure un retorno de rutas de la SPA a `index.html` para las actualizaciones del navegador, proporcione credenciales de base de datos y proveedor mediante un mecanismo de secretos en lugar de incluirlas en la imagen o la compilación del frontend y verifique TLS, cabeceras y reglas de grupos de seguridad reales. Estos detalles operativos no se incluyen como cajas adicionales en el diagrama de ejecución de manera deliberada.
 
-Deployment automation is **not implemented**: current GitHub Actions only checks pull requests. A later workflow could use short-lived OIDC credentials to upload the React build to S3, push the API image to ECR, and update the ECS service. Before provisioning, verify service availability, regional pricing, and credit eligibility in the actual AWS Free Plan account; the USD 100 credit is not a guarantee that this topology is free. Keep resource sizes small and configure a budget alert. No AWS resources, public URLs, or cloud costs have been verified yet.
+La automatización del despliegue **no está implementada**: las GitHub Actions actuales solo comprueban las solicitudes de cambio. Un flujo posterior podría usar credenciales OIDC de corta duración para cargar la compilación React en S3, publicar la imagen de API en ECR y actualizar el servicio ECS. Antes de aprovisionar, verifique disponibilidad del servicio, precios regionales y elegibilidad de créditos en la cuenta AWS Free Plan real; el crédito de USD 100 no garantiza que esta topología sea gratuita. Mantenga los recursos pequeños y configure una alerta de presupuesto. Todavía no se verificaron recursos AWS, URL públicas ni costos de nube.
 
-AWS references: [private S3 origin with CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [ECS Express Mode network and target defaults](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html), and [RDS security groups](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-groups.html).
+Referencias de AWS: [origen privado S3 con CloudFront](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html), [red y destinos predeterminados de ECS Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-work.html) y [grupos de seguridad de RDS](https://docs.aws.amazon.com/AmazonRDS/latest/gettingstartedguide/security-groups.html).
