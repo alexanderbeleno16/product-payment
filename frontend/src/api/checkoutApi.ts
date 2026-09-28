@@ -95,7 +95,18 @@ function isConsentTerms(value: unknown): value is ConsentTerms {
     isConsentDocument(value.personalDataAuthorization)
 }
 
-async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
+interface JsonRequestOptions {
+  method?: 'POST'
+  body?: string
+  headers?: Record<string, string>
+  expectedStatus?: number
+}
+
+export async function requestJson(
+  path: string,
+  signal: AbortSignal,
+  options: JsonRequestOptions = {},
+): Promise<unknown> {
   const controller = new AbortController()
   const forwardAbort = () => controller.abort(signal.reason)
   if (signal.aborted) forwardAbort()
@@ -115,10 +126,14 @@ async function readJson(path: string, signal: AbortSignal): Promise<unknown> {
       (async () => {
         const response = await fetch(`${apiBaseUrl}${path}`, {
           signal: controller.signal,
-          headers: { Accept: 'application/json' },
+          ...(options.method ? { method: options.method } : {}),
+          ...(options.body ? { body: options.body } : {}),
+          headers: { Accept: 'application/json', ...options.headers },
           cache: 'no-store',
         })
         if (!response.ok) throw new ApiError(response.status)
+        if (options.expectedStatus !== undefined && response.status !== options.expectedStatus)
+          throw new Error('Unexpected response status')
         return (await response.json()) as unknown
       })(),
       aborted,
@@ -134,14 +149,14 @@ export async function getProduct(
   id: string,
   signal: AbortSignal,
 ): Promise<Product> {
-  const data = await readJson(`/products/${encodeURIComponent(id)}`, signal)
+  const data = await requestJson(`/products/${encodeURIComponent(id)}`, signal)
   if (!isProduct(data) || data.id !== id)
     throw new Error('Invalid product response')
   return data
 }
 
 export async function getProducts(signal: AbortSignal): Promise<Product[]> {
-  const data = await readJson('/products', signal)
+  const data = await requestJson('/products', signal)
   if (!Array.isArray(data) || !data.every(isProduct))
     throw new Error('Invalid product list response')
   return data
@@ -153,7 +168,7 @@ export async function getQuote(
   signal: AbortSignal,
 ): Promise<CheckoutQuote> {
   const query = new URLSearchParams({ productId, quantity: String(quantity) })
-  const data = await readJson(`/checkout/quote?${query}`, signal)
+  const data = await requestJson(`/checkout/quote?${query}`, signal)
   if (
     !isCheckoutQuote(data) ||
     data.productId !== productId ||
@@ -165,7 +180,7 @@ export async function getQuote(
 }
 
 export async function getConsentTerms(signal: AbortSignal): Promise<ConsentTerms> {
-  const data = await readJson('/checkout/consents', signal)
+  const data = await requestJson('/checkout/consents', signal)
   if (!isConsentTerms(data)) throw new Error('Invalid consent response')
   return data
 }
