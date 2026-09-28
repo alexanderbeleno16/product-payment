@@ -1,3 +1,4 @@
+import { SandboxCardTokenization } from '../src/adapters/outbound/payment/sandbox-card-tokenization';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -28,6 +29,8 @@ describe('AppController (e2e)', () => {
       .useValue({ getById: jest.fn() })
       .overrideProvider(PaymentEventVerifier)
       .useValue(new PaymentEventVerifier('test_events_fixture_only'))
+      .overrideProvider(SandboxCardTokenization)
+      .useValue({ encryptionKey: jest.fn(), tokenize: jest.fn() })
       .compile();
 
     app = moduleFixture.createNestApplication();
