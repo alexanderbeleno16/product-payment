@@ -26,13 +26,27 @@ export class GetTransactionStatus {
       return { ok: false, reason: 'NOT_FOUND' };
     }
 
+    return { ok: true, value: this.toPublicStatus(transaction) };
+  }
+
+  async recoverByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<TransactionStatusResult> {
+    const transaction = await this.store.findByIdempotencyKey(
+      idempotencyKey.trim().toLowerCase(),
+    );
+    if (!transaction) return { ok: false, reason: 'NOT_FOUND' };
+
+    return { ok: true, value: this.toPublicStatus(transaction) };
+  }
+
+  private toPublicStatus(
+    transaction: CheckoutTransaction,
+  ): TransactionStatusView {
     return {
-      ok: true,
-      value: {
-        reference: transaction.reference,
-        paymentStatus: transaction.status,
-        fulfillmentStatus: transaction.fulfillmentStatus,
-      },
+      reference: transaction.reference,
+      paymentStatus: transaction.status,
+      fulfillmentStatus: transaction.fulfillmentStatus,
     };
   }
 }

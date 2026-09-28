@@ -29,7 +29,10 @@ import type {
   CheckoutInput,
   CheckoutTransaction,
 } from '../../../application/checkout';
-import { ConsentTermsUnavailable, type ConsentTermsReader } from '../../../application/consent-terms.port';
+import {
+  ConsentTermsUnavailable,
+  type ConsentTermsReader,
+} from '../../../application/consent-terms.port';
 import { GetTransactionStatus } from '../../../application/get-transaction-status';
 import { InitiatePayment } from '../../../application/initiate-payment';
 import { QuoteCheckout } from '../../../application/quote-checkout';
@@ -142,7 +145,10 @@ export class CheckoutController {
         personalDataAuthorization: terms.personalDataAuthorization,
       };
     } catch (error) {
-      const category = error instanceof ConsentTermsUnavailable ? error.category : 'unexpected';
+      const category =
+        error instanceof ConsentTermsUnavailable
+          ? error.category
+          : 'unexpected';
       this.logger.warn(`Consent terms unavailable: ${category}`);
       throw new ServiceUnavailableException(
         'Consent terms are temporarily unavailable',
@@ -208,6 +214,31 @@ export class CheckoutController {
     );
     if (!result.ok) return rejectCheckout(result.reason);
     return this.publicCheckout(result.value);
+  }
+
+  @Get('checkouts/status')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Recover narrow local checkout status by its original key',
+    description:
+      'Read-only recovery when the POST response or reference was lost. This route never submits payment or contacts the provider.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Original buyer-generated checkout UUID v4',
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiResponse({ status: 200, type: TransactionStatusResponseDto })
+  @ApiResponse({ status: 400, description: 'Missing or invalid original key' })
+  @ApiResponse({ status: 404, description: 'No checkout for the original key' })
+  async recoverStatus(
+    @IdempotencyKey(new ParseUUIDPipe({ version: '4' })) idempotencyKey: string,
+  ) {
+    const result =
+      await this.getTransactionStatus.recoverByIdempotencyKey(idempotencyKey);
+    if (!result.ok) throw new NotFoundException('Transaction not found');
+    return result.value;
   }
 
   @Get('transactions/:reference')
