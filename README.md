@@ -96,7 +96,7 @@ sequenceDiagram
     SPA->>API: GET /checkout/quote before summary
     API-->>SPA: Refreshed server-priced quote
     SPA-->>Buyer: Show non-paying summary and disabled payment action
-    Note over Buyer,SPA: Current frontend stops here; payment submission is planned
+    Note over Buyer,SPA: Current frontend stops here. Payment submission is planned.
     Buyer->>SPA: Explicitly confirm and pay
     SPA->>API: Submit checkout with token, delivery, and idempotency key
     API->>DB: Look up key and compare canonical checkout fingerprint
