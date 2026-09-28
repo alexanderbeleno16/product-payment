@@ -1,6 +1,6 @@
 # Backend
 
-NestJS and TypeScript API for a single-product checkout. The backend exposes product reading, server-priced quotes, current payment consents, idempotent checkout initiation, signed payment-event receipt, and limited local transaction-status reads. It persists PENDING checkouts and can submit one sandbox payment attempt. The signed-event route fetches an authoritative transaction with the server-only private key before atomic local finalization. Local sandbox approval and success-only fulfillment have been observed, including a browser journey; a deployed callback has **not** been verified. An operator-only known-ID reconciliation path is implemented and tested locally.
+NestJS and TypeScript API for a single-product checkout. The backend exposes product reading, server-priced quotes, current payment consents, idempotent checkout initiation, signed payment-event receipt, and limited local transaction-status reads. It persists PENDING checkouts and can submit one sandbox payment attempt. The signed-event route fetches an authoritative transaction with the server-only private key before atomic local finalization. Local sandbox approval and success-only fulfillment have been observed after operator known-ID reconciliation, including a browser journey; a deployed callback and autonomous recovery have **not** been verified. An operator-only known-ID reconciliation path is implemented and tested locally.
 
 ## Run locally
 
