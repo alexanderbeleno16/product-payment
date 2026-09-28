@@ -110,18 +110,23 @@ const databaseUrl = process.env.CHECKOUT_TEST_DATABASE_URL;
       const first = await pending();
       const second = await pending();
       let finishLookup!: (result: { ok: true }) => void;
-      const execute = jest.fn().mockImplementationOnce(
-        () => new Promise((resolve) => { finishLookup = resolve; }),
-      ).mockResolvedValue({ ok: true });
+      let notifyLookupStarted!: () => void;
+      const lookupStarted = new Promise<void>((resolve) => {
+        notifyLookupStarted = resolve;
+      });
+      const execute = jest.fn().mockImplementationOnce(() => {
+        notifyLookupStarted();
+        return new Promise((resolve) => {
+          finishLookup = resolve;
+        });
+      }).mockResolvedValue({ ok: true });
       const worker = new ReconcilePendingPayments(
         queue,
         { execute } as unknown as ReconcileKnownPayment,
       );
 
       const running = worker.run(2, 30, 90);
-      for (let attempt = 0; attempt < 20 && execute.mock.calls.length === 0; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
+      await lookupStarted;
       const processing = execute.mock.calls[0]?.[0] as string;
       expect([first, second]).toContain(processing);
       const competingClaim = await queue.claim(1, 30, 90);
